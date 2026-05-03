@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -32,24 +33,79 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md p-8 bg-white rounded-lg shadow">
-        <h1 className="text-2xl font-bold mb-6 text-center">CreditReclaim</h1>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-2 border rounded-lg" required />
+    <div className="min-h-screen bg-white">
+      {/* Nav */}
+      <nav className="border-b border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-8 py-5 flex justify-between items-center">
+          <Link href="/" className="text-2xl font-light tracking-tight text-gray-900">
+            Credit<span className="font-semibold">Reclaim</span>
+          </Link>
+          <Link href="/signup" className="text-sm text-gray-600 hover:text-gray-900 font-medium">Sign Up</Link>
+        </div>
+      </nav>
+
+      {/* Content */}
+      <div className="flex items-center justify-center min-h-[calc(100vh-70px)]">
+        <div className="w-full max-w-md px-8">
+          <Link href="/" className="text-sm text-gray-600 hover:text-gray-900 mb-12 inline-flex items-center gap-2">
+            ← Back
+          </Link>
+
+          <div className="mb-12">
+            <h1 className="text-4xl font-light text-gray-900 mb-3">Welcome Back</h1>
+            <p className="text-gray-600 font-light">Sign in to your account.</p>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-2 border rounded-lg" required />
+
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-3">Email Address</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 bg-white text-gray-900 text-base focus:outline-none focus:border-gray-900 transition"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-900 mb-3">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 bg-white text-gray-900 text-base focus:outline-none focus:border-gray-900 transition"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            {error && (
+              <div className="p-4 border border-red-300 bg-red-50">
+                <p className="text-sm text-red-900 font-medium">{error}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition disabled:opacity-50 mt-8"
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="mt-10 pt-10 border-t border-gray-200">
+            <p className="text-sm text-gray-600 font-light text-center">
+              Don't have an account? <Link href="/signup" className="text-gray-900 font-medium hover:underline">Create one</Link>
+            </p>
           </div>
-          {error && <div className="p-3 bg-red-100 text-red-700 rounded">{error}</div>}
-          <button type="submit" disabled={loading} className="w-full py-2 bg-blue-600 text-white rounded-lg font-semibold disabled:opacity-50">
-            {loading ? 'Logging in...' : 'Login'}
-          </button>
-        </form>
-        <p className="text-sm text-center mt-4">Don't have an account? <a href="/signup" className="text-blue-600">Sign up</a></p>
+
+          <p className="text-center text-gray-600 font-light text-xs mt-10">
+            <a href="#" className="text-gray-900 hover:underline">Can't remember your password?</a>
+          </p>
+        </div>
       </div>
     </div>
   );
