@@ -19,7 +19,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-8 py-24">
           <div className="max-w-3xl">
             <h1 className="text-5xl font-light tracking-tight text-gray-800 mb-6 leading-tight">
-              The credit repair platform built on education.
+              The credit improvement platform built on education and coaching.
             </h1>
             <p className="text-xl text-gray-600 font-light mb-12 leading-relaxed">
               Learn the strategies that actually work. Then execute with precision. Whether you manage disputes yourself or let us handle it, your credit gets fixed right.
