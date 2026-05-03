@@ -111,6 +111,18 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Slogan */}
+      <section className="bg-gray-800 text-white">
+        <div className="max-w-3xl mx-auto px-8 py-24 text-center">
+          <p className="text-xl font-light text-gray-300 leading-relaxed mb-8">
+            We work alongside you to improve your credit health. Then we stay alongside you to continue managing your credit health.
+          </p>
+          <p className="text-3xl font-light leading-tight">
+            By ourselves the system beats us. <span className="font-semibold">Together, WE BEAT THE SYSTEM.</span>
+          </p>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-8 py-24">
