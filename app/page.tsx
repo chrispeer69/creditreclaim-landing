@@ -84,11 +84,23 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Why Us */}
+      <section className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-8 py-24">
+          <div className="max-w-3xl">
+            <h2 className="text-3xl font-light text-gray-800 mb-6">Why we exist</h2>
+            <p className="text-lg text-gray-600 font-light leading-relaxed">
+              Most people do not know or understand their rights when dealing with the three major credit bureaus. We are experts. When you work with us we share years of experience with you to help you improve your credit standing.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-8 py-24">
           <h2 className="text-3xl font-light text-gray-800 mb-16">Simple pricing</h2>
-          <div className="grid grid-cols-2 gap-8 max-w-3xl">
+          <div className="grid grid-cols-3 gap-8 max-w-5xl">
             <div className="border border-gray-200 p-10">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">DIY</h3>
               <p className="text-gray-600 font-light mb-8">You manage. You learn. You win.</p>
@@ -104,6 +116,23 @@ export default function Home() {
               <Link href="/signup" className="w-full block text-center px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition">
                 Start DIY
               </Link>
+            </div>
+
+            <div className="border border-gray-200 p-10">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">Coaching Session</h3>
+              <p className="text-gray-600 font-light mb-8">Get personalized guidance from an expert.</p>
+              <div className="mb-8">
+                <div className="text-3xl font-light text-gray-800">$79<span className="text-sm font-light text-gray-600 ml-2">one-time</span></div>
+              </div>
+              <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
+                <li>✓ 30 minute session</li>
+                <li>✓ Expert guidance</li>
+                <li>✓ Credit review</li>
+                <li>✓ Action plan</li>
+              </ul>
+              <button className="w-full px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50" disabled>
+                Coming Soon
+              </button>
             </div>
 
             <div className="border border-gray-800 p-10 bg-gray-800 text-white">
@@ -132,7 +161,7 @@ export default function Home() {
       {/* CTA */}
       <section className="bg-gray-800 text-white">
         <div className="max-w-7xl mx-auto px-8 py-20 text-center">
-          <h2 className="text-4xl font-light mb-8">Ready to fix your credit?</h2>
+          <h2 className="text-4xl font-light mb-8">Ready to improve your credit standing?</h2>
           <Link href="/signup" className="inline-block px-8 py-3 bg-white text-gray-800 text-sm font-semibold hover:bg-gray-100 transition">
             Get Started Free
           </Link>
