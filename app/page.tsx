@@ -1,15 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function Home() {
-  const [showPopup, setShowPopup] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowPopup(true), 2000);
-    return () => clearTimeout(timer);
-  }, []);
-
   return (
     <div>
       {/* Nav */}
@@ -146,34 +138,6 @@ export default function Home() {
           </Link>
         </div>
       </section>
-
-      {/* Popup */}
-      {showPopup && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-lg p-10 max-w-md w-full shadow-2xl">
-            <h3 className="text-2xl font-light text-gray-800 mb-4">
-              Ready to reclaim your credit?
-            </h3>
-            <p className="text-gray-600 font-light mb-8">
-              Say yes and get 10% off your first month.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => window.location.href = '/signup?discount=10'}
-                className="flex-1 px-6 py-3 bg-gray-700 text-white text-sm font-medium hover:bg-gray-600 transition"
-              >
-                Yes
-              </button>
-              <button
-                onClick={() => setShowPopup(false)}
-                className="flex-1 px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition"
-              >
-                Browse
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
