@@ -114,11 +114,17 @@ export default function Home() {
       {/* Slogan */}
       <section className="bg-gray-800 text-white">
         <div className="max-w-3xl mx-auto px-8 py-24 text-center">
-          <p className="text-xl font-light text-gray-300 leading-relaxed mb-8">
-            We work alongside you to improve your credit health. Then we stay alongside you to continue managing your credit health.
+          <p className="text-xl font-light text-gray-300 leading-relaxed mb-3">
+            We work alongside you to improve your credit health.
           </p>
-          <p className="text-3xl font-light leading-tight">
-            By ourselves the system beats us. <span className="font-semibold">Together, WE BEAT THE SYSTEM.</span>
+          <p className="text-xl font-light text-gray-300 leading-relaxed mb-10">
+            Then we stay alongside you to continue managing your credit health.
+          </p>
+          <p className="text-3xl font-light leading-tight mb-3">
+            By ourselves the system beats us.
+          </p>
+          <p className="text-3xl font-semibold leading-tight">
+            Together, WE BEAT THE SYSTEM.
           </p>
         </div>
       </section>
