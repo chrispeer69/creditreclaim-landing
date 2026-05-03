@@ -96,6 +96,21 @@ export default function Home() {
         </div>
       </section>
 
+      {/* The Reality */}
+      <section className="bg-gray-50 border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-8 py-24">
+          <div className="max-w-3xl">
+            <h2 className="text-3xl font-light text-gray-800 mb-8">The system is rigged</h2>
+            <p className="text-lg text-gray-600 font-light leading-relaxed mb-6">
+              The system is set up to work against you. Credit bureaus work for the banks, not the consumer. Evidence: constantly changing grading scales with over 20 different credit reports lenders use. They call it intelligence. We call it market manipulation by Fortune 500 companies working together to squeeze just a little more money from where they can.
+            </p>
+            <p className="text-lg text-gray-600 font-light leading-relaxed">
+              Utilize our years of experience to fight against the system, for you and your family.
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-8 py-24">
