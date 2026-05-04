@@ -14,7 +14,7 @@ Not clinical data. Not a spreadsheet. A **narrative of your life improving.**
   - Creditor | Status | **Days Until Forced Response** | Your Move
   - Shows you're DOING something, not waiting
   - Educational callout: "Why 30 days matters" (link to training module)
-- Letters you can send TODAY (not all 100, just the 3-5 that match your situation)
+- Letters you can send TODAY (not the whole library, just the 3-5 that match your situation)
   - One-click send or download
   - "Why send this now?" explanation right there
 - Responses received (celebration moment)
@@ -66,3 +66,14 @@ CreditReclaim is the only platform that tells users the full truth about credit 
 - Say: "The score you see may not be the score your lender uses"
 - Don't say: "FICO and the bureaus manipulate numbers in favor of lenders" (defamation risk against litigious entities)
 - The neutral framing is equally damning and legally safe
+
+## Letter Library — Living Document
+
+The letter library is intentionally expandable. Current count reflects the trifecta of core moves (validation, dispute, 30-day forced response) plus edge-case coverage. New letters get added when:
+- Real users hit a gap not covered by existing letters
+- Legal landscape changes (new FCRA/FDCPA rulings, state laws)
+- A specific creditor or collector pattern emerges that warrants a tailored response
+
+Adding a letter is a structured process: draft → fields populated (when_to_use, why_it_works, how_to_use, template_body) → JSON updated → re-run scripts/extract-letters.mjs (or add directly to scripts/letters-source.json) → schema and seed updated.
+
+Phase 9 admin panel will support letter creation through the UI.

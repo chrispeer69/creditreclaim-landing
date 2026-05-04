@@ -142,7 +142,7 @@ export default function Home() {
               </div>
               <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
                 <li>✓ 5 training modules</li>
-                <li>✓ 100+ dispute letters</li>
+                <li>✓ Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.</li>
                 <li>✓ Dashboard & tracking</li>
                 <li>✓ Document vault</li>
               </ul>
