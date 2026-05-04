@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -23,6 +24,13 @@ export default function LoginPage() {
       if (!res.ok) {
         const { error: apiError } = await res.json();
         throw new Error(apiError);
+      }
+      const { session } = await res.json();
+      if (session?.access_token && session?.refresh_token) {
+        await supabase.auth.setSession({
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+        });
       }
       router.push('/dashboard');
     } catch (err) {
