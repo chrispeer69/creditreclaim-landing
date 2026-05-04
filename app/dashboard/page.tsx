@@ -446,9 +446,17 @@ function BattlesPanel({
             Disputes in flight. Bureaus must respond within 30 days under FCRA §611.
           </p>
         </div>
-        <span className="shrink-0 text-xs text-gray-500">
-          {disputes.length} open
-        </span>
+        <div className="shrink-0 flex items-center gap-3">
+          <span className="text-xs text-gray-500">{disputes.length} open</span>
+          {!isManaged && (
+            <Link
+              href="/dashboard/dispute/new"
+              className="text-xs px-3 py-2 bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition"
+            >
+              Start a battle
+            </Link>
+          )}
+        </div>
       </div>
       {disputes.length === 0 ? (
         <div className="px-6 py-12 text-center text-sm text-gray-600 font-light">
