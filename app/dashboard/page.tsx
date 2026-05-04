@@ -10,7 +10,15 @@ import {
   type Recommendation,
 } from '@/lib/hooks/useDashboardData';
 
+// FCRA §611 gives bureaus 30 days from receipt of dispute to respond.
+const FCRA_RESPONSE_DAYS = 30;
+// Most negative items must drop off after 7 years under FCRA §605.
+const CLEAN_SLATE_YEARS = 7;
+
 const ACTIVE_STATUSES = new Set(['draft', 'sent', 'in_review', 'responded']);
+const IN_FLIGHT_STATUSES = new Set(['sent', 'in_review', 'responded']);
+
+type Tone = 'green' | 'amber' | 'neutral';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,11 +33,8 @@ export default function DashboardPage() {
     refetch,
   } = useDashboardData();
 
-  // Redirect to login if no session and not still loading.
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
-    }
+    if (!loading && !user) router.push('/login');
   }, [loading, user, router]);
 
   const tier = (credits?.tier ?? 'diy').toLowerCase();
@@ -43,11 +48,19 @@ export default function DashboardPage() {
     () => disputes.filter(d => d.status === 'draft'),
     [disputes],
   );
+  const inFlightDisputes = useMemo(
+    () => disputes.filter(d => IN_FLIGHT_STATUSES.has(d.status)),
+    [disputes],
+  );
   const wonDisputes = useMemo(
     () => disputes.filter(d => d.status === 'removed'),
     [disputes],
   );
-  const recentResponses = useMemo(() => responses.slice(0, 5), [responses]);
+  const removedThisMonth = useMemo(
+    () => wonDisputes.filter(d => isThisMonth(d.removed_date)).length,
+    [wonDisputes],
+  );
+  const recentResponses = useMemo(() => responses.slice(0, 4), [responses]);
 
   const currentScore = credits?.current_score ?? 0;
   const initialScore = credits?.initial_score ?? null;
@@ -56,6 +69,24 @@ export default function DashboardPage() {
       ? credits.current_score - initialScore
       : null;
   const removedCount = credits?.removed_count ?? wonDisputes.length;
+
+  const oldestDisputeMs = useMemo(() => {
+    const times = disputes
+      .map(d => d.created_at)
+      .filter((s): s is string => !!s)
+      .map(s => new Date(s).getTime())
+      .filter(t => !Number.isNaN(t));
+    return times.length === 0 ? null : Math.min(...times);
+  }, [disputes]);
+
+  const cleanSlateMonths = useMemo(() => {
+    if (oldestDisputeMs == null) return null;
+    const targetMs =
+      oldestDisputeMs + CLEAN_SLATE_YEARS * 365.25 * 24 * 60 * 60 * 1000;
+    const remaining = targetMs - Date.now();
+    if (remaining <= 0) return 0;
+    return Math.round(remaining / (1000 * 60 * 60 * 24 * 30.4375));
+  }, [oldestDisputeMs]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -80,49 +111,73 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {/* Top: counters */}
-            <section className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-10">
+            <StoryHook
+              currentScore={currentScore}
+              initialScore={initialScore}
+              delta={scoreDelta}
+              removedCount={removedCount}
+              activeCount={activeDisputes.length}
+              isManaged={isManaged}
+            />
+
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-10">
               <ScoreCard
                 currentScore={currentScore}
+                initialScore={initialScore}
                 delta={scoreDelta}
               />
-              <CounterCard
-                label="Items removed"
-                value={removedCount}
-                hint="Negative items off your report"
+              <CelebrationTile
+                label="Removed this month"
+                value={removedThisMonth}
+                hint={
+                  removedThisMonth > 0
+                    ? 'Wins logged this month'
+                    : 'Land your first one this month'
+                }
+                tone="green"
               />
-              <CounterCard
+              <CelebrationTile
                 label="Disputes won"
-                value={wonDisputes.length}
-                hint={`${activeDisputes.length} still in flight`}
+                value={removedCount}
+                hint="Total negative items off"
+                tone="green"
+              />
+              <CleanSlateTile
+                months={cleanSlateMonths}
+                hasData={oldestDisputeMs != null}
               />
             </section>
 
-            {/* Middle: active disputes + recommended letters + recent responses */}
+            {initialScore != null && currentScore > 0 && (
+              <ScoreTrajectory initial={initialScore} current={currentScore} />
+            )}
+
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-              <div className="lg:col-span-2">
-                <ActiveDisputesPanel
-                  disputes={activeDisputes}
+              <div className="lg:col-span-2 flex flex-col gap-6">
+                <BattlesPanel
+                  disputes={[...inFlightDisputes, ...draftDisputes]}
                   isManaged={isManaged}
-                  onChange={refetch}
                 />
+                <ThirtyDayRuleCallout />
               </div>
               <div className="lg:col-span-1 flex flex-col gap-6">
-                <RecommendedLettersPanel
+                <LettersTodayPanel
                   draftDisputes={draftDisputes}
                   isManaged={isManaged}
                 />
-                <RecentResponsesPanel responses={recentResponses} />
+                <ResponsesCelebrationPanel responses={recentResponses} />
               </div>
             </section>
 
-            {/* Bottom: recommendations */}
-            <section>
-              <RecommendationsPanel recommendations={recommendations} />
+            <section className="mb-10">
+              <KnowledgeHub
+                recommendations={recommendations}
+                cleanSlateMonths={cleanSlateMonths}
+              />
             </section>
 
             {isManaged && (
-              <section className="mt-10">
+              <section>
                 <ManagedActivityLog disputes={disputes} responses={responses} />
               </section>
             )}
@@ -168,104 +223,243 @@ function DashboardNav({ email, tier }: { email: string; tier: string }) {
   );
 }
 
+function StoryHook({
+  currentScore,
+  initialScore,
+  delta,
+  removedCount,
+  activeCount,
+  isManaged,
+}: {
+  currentScore: number;
+  initialScore: number | null;
+  delta: number | null;
+  removedCount: number;
+  activeCount: number;
+  isManaged: boolean;
+}) {
+  const hasJourney =
+    initialScore != null && delta != null && currentScore > 0;
+  const headline = !hasJourney
+    ? "Welcome. Let's start your story."
+    : delta! > 0
+      ? `You started at ${initialScore}. You're at ${currentScore}. Up ${delta} points and counting.`
+      : delta! < 0
+        ? `You started at ${initialScore}. You're at ${currentScore}. We'll get this turned around.`
+        : `You started at ${initialScore}. Your file is in motion.`;
+
+  const sub =
+    removedCount === 0 && activeCount === 0
+      ? 'Add your first negative item to start clearing your file.'
+      : removedCount === 0
+        ? `${activeCount} ${pluralize('dispute', activeCount)} in flight. First wins are days away.`
+        : activeCount === 0
+          ? `${removedCount} ${pluralize('item', removedCount)} already off your file. Time to file the next round.`
+          : `${removedCount} ${pluralize('item', removedCount)} off your file. ${activeCount} more in flight. Keep going.`;
+
+  return (
+    <div className="mb-10 p-6 sm:p-8 bg-gradient-to-br from-emerald-50 to-white border border-emerald-200">
+      <p className="text-xs uppercase tracking-wider text-emerald-700 font-medium mb-2">
+        {isManaged ? 'Your team is on it' : 'Your story so far'}
+      </p>
+      <h1 className="text-2xl sm:text-3xl font-light text-gray-900 leading-snug">
+        {headline}
+      </h1>
+      <p className="mt-3 text-sm sm:text-base text-gray-700 font-light">
+        {sub}
+      </p>
+    </div>
+  );
+}
+
 function ScoreCard({
   currentScore,
+  initialScore,
   delta,
 }: {
   currentScore: number;
+  initialScore: number | null;
   delta: number | null;
 }) {
+  const accent =
+    delta == null
+      ? 'text-gray-500'
+      : delta > 0
+        ? 'text-emerald-700'
+        : delta < 0
+          ? 'text-red-700'
+          : 'text-gray-500';
   const deltaText =
     delta == null
       ? 'Tracking…'
       : delta === 0
         ? 'No change yet'
-        : `${delta > 0 ? '+' : ''}${delta} since you started`;
-  const deltaColor =
-    delta == null
-      ? 'text-gray-500'
-      : delta > 0
-        ? 'text-green-700'
-        : delta < 0
-          ? 'text-red-700'
-          : 'text-gray-500';
+        : `${delta > 0 ? '+' : ''}${delta} pts`;
+
   return (
     <div className="bg-white border border-gray-200 p-6">
       <div className="text-xs uppercase tracking-wider text-gray-500 mb-3">
         Credit score
       </div>
-      <div className="text-4xl sm:text-5xl font-light text-gray-800">
+      <div className="text-5xl sm:text-6xl font-light text-gray-900">
         {currentScore || '—'}
       </div>
-      <div className={`mt-3 text-sm font-light ${deltaColor}`}>{deltaText}</div>
-    </div>
-  );
-}
-
-function CounterCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-}) {
-  return (
-    <div className="bg-white border border-gray-200 p-6">
-      <div className="text-xs uppercase tracking-wider text-gray-500 mb-3">
-        {label}
-      </div>
-      <div className="text-4xl sm:text-5xl font-light text-gray-800">{value}</div>
-      {hint && (
-        <div className="mt-3 text-sm text-gray-600 font-light">{hint}</div>
+      <div className={`mt-3 text-sm font-medium ${accent}`}>{deltaText}</div>
+      {initialScore != null && (
+        <div className="mt-1 text-xs text-gray-500 font-light">
+          Started at {initialScore}
+        </div>
       )}
     </div>
   );
 }
 
-function ActiveDisputesPanel({
+function CelebrationTile({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  tone: Tone;
+}) {
+  const palette =
+    tone === 'green'
+      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+      : tone === 'amber'
+        ? 'bg-amber-50 border-amber-200 text-amber-900'
+        : 'bg-white border-gray-200 text-gray-900';
+  return (
+    <div className={`p-6 border ${palette}`}>
+      <div className="text-xs uppercase tracking-wider opacity-70 mb-3">
+        {label}
+      </div>
+      <div className="text-5xl sm:text-6xl font-light">{value}</div>
+      {hint && <div className="mt-3 text-sm font-light opacity-80">{hint}</div>}
+    </div>
+  );
+}
+
+function CleanSlateTile({
+  months,
+  hasData,
+}: {
+  months: number | null;
+  hasData: boolean;
+}) {
+  const display = !hasData
+    ? '—'
+    : months === 0
+      ? 'Today'
+      : monthsToYearMonth(months ?? 0);
+  return (
+    <div className="p-6 border bg-amber-50 border-amber-200 text-amber-900">
+      <div className="text-xs uppercase tracking-wider opacity-70 mb-3">
+        Oldest item ages out
+      </div>
+      <div className="text-3xl sm:text-4xl font-light">{display}</div>
+      <div className="mt-3 text-sm font-light opacity-80">
+        7-year clean-slate countdown
+      </div>
+    </div>
+  );
+}
+
+function ScoreTrajectory({
+  initial,
+  current,
+}: {
+  initial: number;
+  current: number;
+}) {
+  // Map FICO range 300–850 onto a 0–100% bar.
+  const min = 300;
+  const max = 850;
+  const initialPct = clamp(((initial - min) / (max - min)) * 100, 0, 100);
+  const currentPct = clamp(((current - min) / (max - min)) * 100, 0, 100);
+  const left = Math.min(initialPct, currentPct);
+  const width = Math.abs(currentPct - initialPct);
+  const up = current >= initial;
+
+  return (
+    <section className="mb-10 bg-white border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4 gap-4">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-gray-500">
+            Score trajectory
+          </div>
+          <p className="text-sm text-gray-700 font-light mt-1">
+            From {initial} to {current}.
+          </p>
+        </div>
+        <span
+          className={`shrink-0 text-xs font-medium px-2 py-1 border ${
+            up
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-red-50 text-red-800 border-red-200'
+          }`}
+        >
+          {up ? '↑' : '↓'} {Math.abs(current - initial)} pts
+        </span>
+      </div>
+      <div className="relative h-3 bg-gray-100 border border-gray-200">
+        <div
+          className={`absolute h-full ${up ? 'bg-emerald-500' : 'bg-red-400'}`}
+          style={{ left: `${left}%`, width: `${width}%` }}
+        />
+        <div
+          className="absolute h-full w-0.5 bg-gray-700"
+          style={{ left: `${initialPct}%` }}
+          aria-label={`Starting score ${initial}`}
+        />
+        <div
+          className="absolute h-full w-0.5 bg-gray-900"
+          style={{ left: `${currentPct}%` }}
+          aria-label={`Current score ${current}`}
+        />
+      </div>
+      <div className="flex justify-between mt-2 text-xs text-gray-500 font-light">
+        <span>300</span>
+        <span>850</span>
+      </div>
+    </section>
+  );
+}
+
+function BattlesPanel({
   disputes,
   isManaged,
-  onChange,
 }: {
   disputes: Dispute[];
   isManaged: boolean;
-  onChange: () => Promise<void>;
 }) {
   return (
     <div className="bg-white border border-gray-200">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">Active disputes</h2>
-        <span className="text-xs text-gray-500">{disputes.length} open</span>
+      <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-200">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Active battles
+          </h2>
+          <p className="text-xs text-gray-600 font-light mt-1">
+            Disputes in flight. Bureaus must respond within 30 days under FCRA §611.
+          </p>
+        </div>
+        <span className="shrink-0 text-xs text-gray-500">
+          {disputes.length} open
+        </span>
       </div>
       {disputes.length === 0 ? (
         <div className="px-6 py-12 text-center text-sm text-gray-600 font-light">
-          No active disputes yet.
           {isManaged
-            ? " We'll start the first round shortly."
-            : ' Draft your first letter from the recommendations panel.'}
+            ? "We'll start the first round shortly."
+            : 'No battles active. Draft a letter from the panel on the right.'}
         </div>
       ) : (
         <ul className="divide-y divide-gray-200">
-          {disputes.map(d => (
-            <li key={d.id} className="px-6 py-4 hover:bg-gray-50 transition">
-              <Link
-                href={`/dashboard/dispute/${d.id}`}
-                className="flex items-start justify-between gap-4"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">
-                    {d.creditor_name || 'Unknown creditor'}
-                  </p>
-                  <p className="text-xs text-gray-600 font-light mt-1">
-                    {d.dispute_type || 'General dispute'}
-                    {d.account_number && ` · acct ending ${last4(d.account_number)}`}
-                  </p>
-                </div>
-                <StatusBadge status={d.status} />
-              </Link>
-            </li>
+          {disputes.slice(0, 8).map(d => (
+            <BattleRow key={d.id} d={d} isManaged={isManaged} />
           ))}
         </ul>
       )}
@@ -273,131 +467,386 @@ function ActiveDisputesPanel({
   );
 }
 
-function RecommendedLettersPanel({
+function BattleRow({ d, isManaged }: { d: Dispute; isManaged: boolean }) {
+  const days = forcedResponseDays(d);
+  const move = nextMove(d.status, isManaged);
+  return (
+    <li className="px-6 py-4 hover:bg-gray-50 transition">
+      <Link
+        href={`/dashboard/dispute/${d.id}`}
+        className="grid grid-cols-12 items-center gap-3"
+      >
+        <div className="col-span-12 sm:col-span-5 min-w-0">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            {d.creditor_name || 'Unknown creditor'}
+          </p>
+          <p className="text-xs text-gray-600 font-light mt-1">
+            {d.dispute_type || 'General dispute'}
+            {d.account_number &&
+              ` · acct ending ${last4(d.account_number)}`}
+          </p>
+        </div>
+        <div className="col-span-7 sm:col-span-3">
+          <CountdownChip days={days} status={d.status} />
+        </div>
+        <div className="col-span-5 sm:col-span-2 text-xs text-gray-700">
+          {move}
+        </div>
+        <div className="col-span-12 sm:col-span-2 sm:text-right">
+          <StatusBadge status={d.status} />
+        </div>
+      </Link>
+    </li>
+  );
+}
+
+function CountdownChip({
+  days,
+  status,
+}: {
+  days: number | null;
+  status: string;
+}) {
+  if (status === 'draft') {
+    return (
+      <span className="text-xs text-gray-500 font-light">Not yet sent</span>
+    );
+  }
+  if (days == null) {
+    return (
+      <span className="text-xs text-gray-500 font-light">
+        Awaiting send date
+      </span>
+    );
+  }
+  if (days <= 0) {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200">
+        Bureau overdue · forced removal lever
+      </span>
+    );
+  }
+  if (days <= 7) {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200">
+        {days} {pluralize('day', days)} until forced response
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block text-xs font-medium px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200">
+      {days} days until forced response
+    </span>
+  );
+}
+
+function ThirtyDayRuleCallout() {
+  return (
+    <div className="bg-amber-50 border border-amber-200 p-5 sm:p-6">
+      <span className="inline-block text-xs uppercase tracking-wider text-amber-800 font-medium px-2 py-1 border border-amber-300">
+        Why 30 days matters
+      </span>
+      <p className="mt-3 text-sm text-gray-800 font-light leading-relaxed">
+        Under <span className="font-medium">FCRA §611</span>, credit bureaus
+        have <span className="font-medium">30 days</span> from receipt of your
+        dispute to investigate. Miss that window? They{' '}
+        <span className="font-medium">must remove the item</span> — verified or
+        not. Every day you wait shortens their leash.
+      </p>
+      {/* TODO: wire to the FCRA training module route once it exists */}
+      <button
+        type="button"
+        disabled
+        className="mt-4 text-xs font-medium text-amber-900 underline disabled:no-underline disabled:text-amber-700/60 cursor-not-allowed"
+        title="Module coming soon"
+      >
+        Read the full rule →
+      </button>
+    </div>
+  );
+}
+
+type FallbackLetter = {
+  title: string;
+  why: string;
+  cta: string;
+};
+
+const FALLBACK_LETTERS: FallbackLetter[] = [
+  {
+    title: 'Validation request',
+    why:
+      "Forces collectors to prove the debt is yours under FDCPA §1692g — they often can't.",
+    cta: 'Use template',
+  },
+  {
+    title: 'Bureau dispute (round one)',
+    why:
+      'Starts the FCRA 30-day clock. Inaccuracies must come off; verified items still age out.',
+    cta: 'Use template',
+  },
+  {
+    title: 'Goodwill letter',
+    why:
+      'For paid-off lates with a clean recent record. Goes direct to creditor, not the bureau.',
+    cta: 'Use template',
+  },
+];
+
+function LettersTodayPanel({
   draftDisputes,
   isManaged,
 }: {
   draftDisputes: Dispute[];
   isManaged: boolean;
 }) {
+  const drafts = draftDisputes.slice(0, 3);
+  const fillers =
+    drafts.length < 3 ? FALLBACK_LETTERS.slice(0, 3 - drafts.length) : [];
+
   return (
     <div className="bg-white border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">
-          Recommended letters
-        </h2>
+        <h2 className="text-lg font-semibold text-gray-900">Send today</h2>
+        <p className="text-xs text-gray-600 font-light mt-1">
+          {isManaged
+            ? 'Letters queued for our team.'
+            : 'Three letters that match your situation right now.'}
+        </p>
       </div>
-      {draftDisputes.length === 0 ? (
-        <div className="px-6 py-8 text-sm text-gray-600 font-light text-center">
-          No drafts ready to send.
-        </div>
-      ) : (
-        <ul className="divide-y divide-gray-200">
-          {draftDisputes.slice(0, 5).map(d => (
-            <li key={d.id} className="px-6 py-4">
-              <p className="text-sm font-medium text-gray-800 truncate">
-                {d.creditor_name || 'Unknown creditor'}
+      <ul className="divide-y divide-gray-200">
+        {drafts.map(d => (
+          <li key={d.id} className="px-6 py-4">
+            <p className="text-sm font-medium text-gray-900 truncate">
+              {d.creditor_name || 'Unknown creditor'}
+            </p>
+            <p className="text-xs text-gray-600 font-light mt-1 mb-2">
+              {d.dispute_type || 'General dispute'}
+            </p>
+            <p className="text-xs text-gray-700 font-light mb-3">
+              <span className="font-medium text-gray-900">Why now:</span>{' '}
+              {whyNowFor(d)}
+            </p>
+            {isManaged ? (
+              <p className="text-xs text-gray-500 font-light">
+                Queued for our team
               </p>
-              <p className="text-xs text-gray-600 font-light mt-1 mb-3">
-                {d.dispute_type || 'General dispute'}
-              </p>
-              {isManaged ? (
-                <p className="text-xs text-gray-500 font-light">
-                  Queued for our team
-                </p>
-              ) : (
-                <Link
-                  href={`/dashboard/dispute/${d.id}`}
-                  className="inline-block text-xs px-3 py-2 bg-gray-800 text-white font-medium hover:bg-gray-700 transition"
-                >
-                  Review &amp; send
-                </Link>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+            ) : (
+              <Link
+                href={`/dashboard/dispute/${d.id}`}
+                className="inline-block text-xs px-3 py-2 bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition"
+              >
+                Review &amp; send
+              </Link>
+            )}
+          </li>
+        ))}
+        {fillers.map((l, i) => (
+          <li key={`fallback-${i}`} className="px-6 py-4">
+            <p className="text-sm font-medium text-gray-900">{l.title}</p>
+            <p className="text-xs text-gray-700 font-light mt-2 mb-3">
+              <span className="font-medium text-gray-900">Why now:</span>{' '}
+              {l.why}
+            </p>
+            {/* TODO: wire to the letter template library when that route lands */}
+            <button
+              type="button"
+              disabled
+              className="text-xs px-3 py-2 bg-gray-100 text-gray-500 font-medium cursor-not-allowed"
+              title="Template library coming soon"
+            >
+              {l.cta}
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function RecentResponsesPanel({ responses }: { responses: DisputeResponse[] }) {
-  return (
-    <div className="bg-white border border-gray-200">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">Recent responses</h2>
-      </div>
-      {responses.length === 0 ? (
-        <div className="px-6 py-8 text-sm text-gray-600 font-light text-center">
-          No responses received yet.
-        </div>
-      ) : (
-        <ul className="divide-y divide-gray-200">
-          {responses.map(r => (
-            <li key={r.id} className="px-6 py-4">
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-sm font-medium text-gray-800 truncate">
-                  {r.bureau_name || 'Bureau'}
-                </p>
-                <p className="text-xs text-gray-500 font-light">
-                  {formatDate(r.received_date)}
-                </p>
-              </div>
-              {r.content && (
-                <p className="text-xs text-gray-600 font-light line-clamp-2">
-                  {r.content}
-                </p>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function RecommendationsPanel({
-  recommendations,
+function ResponsesCelebrationPanel({
+  responses,
 }: {
-  recommendations: Recommendation[];
+  responses: DisputeResponse[];
 }) {
   return (
     <div className="bg-white border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">Recommendations</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          Bureau responses
+        </h2>
         <p className="text-xs text-gray-600 font-light mt-1">
-          SOL expirations, age-offs, and your next best actions.
+          What it means in real terms.
         </p>
       </div>
-      {recommendations.length === 0 ? (
-        <div className="px-6 py-12 text-center text-sm text-gray-600 font-light">
-          No recommendations right now. New ones appear as your file evolves.
+      {responses.length === 0 ? (
+        <div className="px-6 py-8 text-sm text-gray-600 font-light text-center">
+          Nothing back yet. The 30-day clock is on your side.
         </div>
       ) : (
         <ul className="divide-y divide-gray-200">
-          {recommendations.map(r => (
-            <li key={r.id} className="px-6 py-4">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800">
-                    {r.title || r.type || 'Recommendation'}
+          {responses.map(r => {
+            const verdict = classifyResponse(r.content);
+            return (
+              <li key={r.id} className="px-6 py-4">
+                <div className="flex items-center justify-between mb-2 gap-3">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {r.bureau_name || 'Bureau'}
                   </p>
-                  {r.description && (
-                    <p className="text-xs text-gray-600 font-light mt-1">
-                      {r.description}
-                    </p>
-                  )}
+                  <p className="shrink-0 text-xs text-gray-500 font-light">
+                    {formatDate(r.received_date)}
+                  </p>
                 </div>
-                {r.type && (
-                  <span className="shrink-0 text-[10px] uppercase tracking-wider text-gray-500 px-2 py-1 border border-gray-200">
-                    {r.type}
-                  </span>
+                <ResponseVerdictBadge verdict={verdict} />
+                {r.content && (
+                  <p className="text-xs text-gray-600 font-light line-clamp-2 mt-2">
+                    {r.content}
+                  </p>
                 )}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
+    </div>
+  );
+}
+
+function ResponseVerdictBadge({
+  verdict,
+}: {
+  verdict: 'win' | 'pending' | 'neutral';
+}) {
+  if (verdict === 'win') {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200">
+        Removal likely · log the win
+      </span>
+    );
+  }
+  if (verdict === 'pending') {
+    return (
+      <span className="inline-block text-xs font-medium px-2 py-1 bg-amber-50 text-amber-800 border border-amber-200">
+        Bureau pushed back · escalate
+      </span>
+    );
+  }
+  return (
+    <span className="inline-block text-xs font-medium px-2 py-1 bg-gray-50 text-gray-700 border border-gray-200">
+      Review needed
+    </span>
+  );
+}
+
+type EducationTile = {
+  key: string;
+  title: string;
+  body: string;
+  cta: string;
+  tone: Tone;
+};
+
+function KnowledgeHub({
+  recommendations,
+  cleanSlateMonths,
+}: {
+  recommendations: Recommendation[];
+  cleanSlateMonths: number | null;
+}) {
+  const ageOutTitle =
+    cleanSlateMonths != null
+      ? `Oldest item ages out in ${monthsToYearMonth(cleanSlateMonths)}`
+      : 'Age-out countdown';
+
+  const staticTiles: EducationTile[] = [
+    {
+      key: 'sol',
+      title: 'Collections inside SOL?',
+      body:
+        "Statute of limitations protects you from being sued — but not from reporting. The right move depends on which side of the line you're on.",
+      cta: 'Read SOL tactics',
+      tone: 'amber',
+    },
+    {
+      key: 'hardship',
+      title: 'Hardship letter primer',
+      body:
+        'Job loss, medical, divorce — creditors will work with you when you ask the right way. Template + timing inside.',
+      cta: 'Open module',
+      tone: 'neutral',
+    },
+    {
+      key: 'ageout',
+      title: ageOutTitle,
+      body:
+        'Most negative items must drop off after 7 years under FCRA §605. Track the clock — sometimes patience beats a dispute.',
+      cta: 'See age-out rules',
+      tone: 'green',
+    },
+  ];
+
+  const visibleRecs = recommendations.slice(0, 3);
+
+  return (
+    <div className="bg-white border border-gray-200">
+      <div className="px-6 py-4 border-b border-gray-200">
+        <h2 className="text-lg font-semibold text-gray-900">Knowledge hub</h2>
+        <p className="text-xs text-gray-600 font-light mt-1">
+          Education tied to the work you&apos;re doing this week.
+        </p>
+      </div>
+      {visibleRecs.length > 0 && (
+        <div className="px-4 sm:px-6 pt-4">
+          <p className="text-xs uppercase tracking-wider text-gray-500 mb-3">
+            For you
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {visibleRecs.map(r => (
+              <StaticTile key={r.id} tile={recToTile(r)} />
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="p-4 sm:p-6">
+        {visibleRecs.length > 0 && (
+          <p className="text-xs uppercase tracking-wider text-gray-500 mb-3">
+            Education
+          </p>
+        )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {staticTiles.map(t => (
+            <StaticTile key={t.key} tile={t} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StaticTile({ tile }: { tile: EducationTile }) {
+  const palette =
+    tile.tone === 'green'
+      ? 'bg-emerald-50 border-emerald-200'
+      : tile.tone === 'amber'
+        ? 'bg-amber-50 border-amber-200'
+        : 'bg-gray-50 border-gray-200';
+  return (
+    <div className={`p-5 border ${palette}`}>
+      <h3 className="text-sm font-semibold text-gray-900">{tile.title}</h3>
+      {tile.body && (
+        <p className="mt-2 text-xs text-gray-700 font-light leading-relaxed">
+          {tile.body}
+        </p>
+      )}
+      {/* TODO: wire each tile CTA to its training-module route once those land */}
+      <button
+        type="button"
+        disabled
+        className="mt-3 text-xs font-medium text-gray-700 underline disabled:no-underline disabled:text-gray-400 cursor-not-allowed"
+        title="Module coming soon"
+      >
+        {tile.cta} →
+      </button>
     </div>
   );
 }
@@ -409,22 +858,29 @@ function ManagedActivityLog({
   disputes: Dispute[];
   responses: DisputeResponse[];
 }) {
-  // Build a unified, time-sorted feed of "what we did" — sends, responses, removals.
-  type Event = { ts: string; label: string; detail: string };
+  type Event = {
+    ts: string;
+    label: string;
+    detail: string;
+    tone: 'win' | 'pending' | 'neutral';
+  };
+
   const events: Event[] = [];
   for (const d of disputes) {
     if (d.letter_sent_date) {
       events.push({
         ts: d.letter_sent_date,
-        label: 'Letter sent',
+        label: 'Letter sent on your behalf',
         detail: `${d.creditor_name || 'Creditor'} · ${d.dispute_type || 'dispute'}`,
+        tone: 'pending',
       });
     }
     if (d.removed_date) {
       events.push({
         ts: d.removed_date,
-        label: 'Item removed',
-        detail: `${d.creditor_name || 'Creditor'}`,
+        label: 'Item removed — win logged',
+        detail: `${d.creditor_name || 'Creditor'} off your file`,
+        tone: 'win',
       });
     }
   }
@@ -432,36 +888,81 @@ function ManagedActivityLog({
     if (r.received_date) {
       events.push({
         ts: r.received_date,
-        label: 'Response received',
-        detail: r.bureau_name || 'Bureau',
+        label: 'Bureau responded',
+        detail: `${r.bureau_name || 'Bureau'} · we logged it for you`,
+        tone: 'neutral',
       });
     }
   }
   events.sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
+  // Next follow-up = 30 days after the most recent unresolved sent letter.
+  const lastSentMs = disputes
+    .filter(d => d.letter_sent_date && d.status === 'sent')
+    .map(d => new Date(d.letter_sent_date as string).getTime())
+    .filter(t => !Number.isNaN(t))
+    .sort((a, b) => b - a)[0];
+  const followUpDate =
+    lastSentMs != null
+      ? new Date(lastSentMs + FCRA_RESPONSE_DAYS * 24 * 60 * 60 * 1000)
+      : null;
+
   return (
     <div className="bg-white border border-gray-200">
       <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-800">Activity log</h2>
+        <h2 className="text-lg font-semibold text-gray-900">
+          What we did this week
+        </h2>
         <p className="text-xs text-gray-600 font-light mt-1">
-          What our team has done on your behalf.
+          You hired us. We&apos;re showing the work.
+          {followUpDate && (
+            <>
+              {' '}
+              Next: bureau has 30 days to respond. We&apos;ll follow up on{' '}
+              <span className="font-medium text-gray-900">
+                {formatDate(followUpDate.toISOString())}
+              </span>
+              .
+            </>
+          )}
         </p>
       </div>
       {events.length === 0 ? (
         <div className="px-6 py-12 text-center text-sm text-gray-600 font-light">
-          No activity yet.
+          We&apos;re getting set up. First letters go out within 48 hours of
+          intake.
         </div>
       ) : (
         <ul className="divide-y divide-gray-200">
-          {events.slice(0, 20).map((e, i) => (
-            <li key={i} className="px-6 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-800">{e.label}</p>
-                <p className="text-xs text-gray-600 font-light mt-1">{e.detail}</p>
-              </div>
-              <p className="text-xs text-gray-500 font-light">{formatDate(e.ts)}</p>
-            </li>
-          ))}
+          {events.slice(0, 20).map((e, i) => {
+            const dot =
+              e.tone === 'win'
+                ? 'bg-emerald-500'
+                : e.tone === 'pending'
+                  ? 'bg-amber-500'
+                  : 'bg-gray-400';
+            return (
+              <li
+                key={i}
+                className="px-6 py-4 flex items-center gap-3"
+              >
+                <span className={`shrink-0 w-2 h-2 rounded-full ${dot}`} />
+                <div className="flex-1 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">
+                      {e.label}
+                    </p>
+                    <p className="text-xs text-gray-600 font-light mt-1 truncate">
+                      {e.detail}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-xs text-gray-500 font-light">
+                    {formatDate(e.ts)}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -471,28 +972,32 @@ function ManagedActivityLog({
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     draft: { label: 'Draft', cls: 'border-gray-300 text-gray-700 bg-gray-50' },
-    sent: { label: 'Sent', cls: 'border-blue-300 text-blue-800 bg-blue-50' },
+    sent: {
+      label: 'Sent',
+      cls: 'border-amber-300 text-amber-800 bg-amber-50',
+    },
     in_review: {
       label: 'In review',
-      cls: 'border-yellow-300 text-yellow-800 bg-yellow-50',
+      cls: 'border-amber-300 text-amber-800 bg-amber-50',
     },
     responded: {
       label: 'Responded',
-      cls: 'border-purple-300 text-purple-800 bg-purple-50',
+      cls: 'border-amber-300 text-amber-800 bg-amber-50',
     },
     removed: {
       label: 'Removed',
-      cls: 'border-green-300 text-green-800 bg-green-50',
+      cls: 'border-emerald-300 text-emerald-800 bg-emerald-50',
     },
     rejected: {
       label: 'Rejected',
       cls: 'border-red-300 text-red-800 bg-red-50',
     },
   };
-  const m = map[status] ?? {
-    label: status,
-    cls: 'border-gray-300 text-gray-700 bg-gray-50',
-  };
+  const m =
+    map[status] ?? {
+      label: status,
+      cls: 'border-gray-300 text-gray-700 bg-gray-50',
+    };
   return (
     <span
       className={`shrink-0 text-[11px] font-medium uppercase tracking-wider px-2 py-1 border ${m.cls}`}
@@ -500,6 +1005,95 @@ function StatusBadge({ status }: { status: string }) {
       {m.label}
     </span>
   );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+function recToTile(r: Recommendation): EducationTile {
+  const tone: Tone =
+    r.priority != null && r.priority <= 1 ? 'amber' : 'neutral';
+  return {
+    key: r.id,
+    title: r.title || r.type || 'Recommendation',
+    body: r.description || '',
+    cta: 'Take action',
+    tone,
+  };
+}
+
+function nextMove(status: string, isManaged: boolean): string {
+  if (isManaged) return 'We handle';
+  switch (status) {
+    case 'draft':
+      return 'Send letter';
+    case 'sent':
+    case 'in_review':
+      return 'Wait & track';
+    case 'responded':
+      return 'Review response';
+    default:
+      return '—';
+  }
+}
+
+function forcedResponseDays(d: Dispute): number | null {
+  if (!d.letter_sent_date) return null;
+  const sent = new Date(d.letter_sent_date).getTime();
+  if (Number.isNaN(sent)) return null;
+  const elapsedDays = Math.floor((Date.now() - sent) / (1000 * 60 * 60 * 24));
+  return FCRA_RESPONSE_DAYS - elapsedDays;
+}
+
+// Heuristic: read bureau response text and pick a verdict the user can act on.
+// "win" = removal language, "pending" = verified/needs-escalation language, else neutral.
+function classifyResponse(content: string | null): 'win' | 'pending' | 'neutral' {
+  if (!content) return 'neutral';
+  const c = content.toLowerCase();
+  if (/(deleted|removed|cannot verify|inaccur|in your favor)/.test(c)) {
+    return 'win';
+  }
+  if (/(verified|accurate|reinvestig|stands as reported|insufficient|need more|incomplete)/.test(c)) {
+    return 'pending';
+  }
+  return 'neutral';
+}
+
+function whyNowFor(d: Dispute): string {
+  const t = (d.dispute_type || '').toLowerCase();
+  if (t.includes('validat'))
+    return "Collector must prove the debt under FDCPA §1692g — pressure on them, not you.";
+  if (t.includes('inaccur') || t.includes('error'))
+    return "FCRA forces removal if they can't verify within 30 days.";
+  if (t.includes('identity') || t.includes('fraud'))
+    return 'Identity theft disputes get fast-tracked — file ASAP.';
+  return 'Every day this sits in draft is a day off your 30-day clock.';
+}
+
+function isThisMonth(value: string | null): boolean {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return (
+    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+  );
+}
+
+function pluralize(word: string, n: number): string {
+  return n === 1 ? word : `${word}s`;
+}
+
+function monthsToYearMonth(months: number): string {
+  if (months <= 0) return 'Today';
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (y === 0) return `${m} mo`;
+  if (m === 0) return `${y} ${pluralize('yr', y)}`;
+  return `${y}y ${m}mo`;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
 }
 
 function last4(value: string): string {
