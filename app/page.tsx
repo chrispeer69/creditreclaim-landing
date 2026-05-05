@@ -138,23 +138,6 @@ export default function Home() {
           </p>
           <div className="grid grid-cols-3 gap-8 max-w-5xl">
             <div className="border border-gray-200 p-10">
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">DIY</h3>
-              <p className="text-gray-600 font-light mb-8">You manage. You learn. You win.</p>
-              <div className="mb-8">
-                <div className="text-3xl font-light text-gray-800">$149<span className="text-sm font-light text-gray-600 ml-2">/month</span></div>
-              </div>
-              <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
-                <li>✓ 5 training modules</li>
-                <li>✓ Every winning dispute strategy — validation, challenges, 30-day forced response, plus FCRA/FDCPA escalation</li>
-                <li>✓ Dashboard & tracking</li>
-                <li>✓ Document vault</li>
-              </ul>
-              <Link href="/signup" className="w-full block text-center px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition">
-                Start DIY
-              </Link>
-            </div>
-
-            <div className="border border-gray-200 p-10">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Coaching Session</h3>
               <p className="text-gray-600 font-light mb-8">Get personalized guidance from an expert.</p>
               <div className="mb-8">
@@ -169,6 +152,23 @@ export default function Home() {
               <button className="w-full px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50" disabled>
                 Coming Soon
               </button>
+            </div>
+
+            <div className="border border-gray-200 p-10">
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">DIY</h3>
+              <p className="text-gray-600 font-light mb-8">You manage. You learn. You win.</p>
+              <div className="mb-8">
+                <div className="text-3xl font-light text-gray-800">$149<span className="text-sm font-light text-gray-600 ml-2">/month</span></div>
+              </div>
+              <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
+                <li>✓ 5 training modules</li>
+                <li>✓ Every winning dispute strategy — validation, challenges, 30-day forced response, plus FCRA/FDCPA escalation</li>
+                <li>✓ Dashboard & tracking</li>
+                <li>✓ Document vault</li>
+              </ul>
+              <Link href="/signup" className="w-full block text-center px-6 py-3 border border-gray-300 text-gray-800 text-sm font-medium hover:bg-gray-50 transition">
+                Start DIY
+              </Link>
             </div>
 
             <div className="border border-gray-800 p-10 bg-gray-800 text-white">
