@@ -41,7 +41,7 @@ function CheckoutContent() {
       description: 'You manage. You learn. You win.',
       features: [
         '5 training modules (required)',
-        'Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.',
+        'Every winning dispute strategy — validation, challenges, 30-day forced response, plus FCRA/FDCPA escalation',
         'Customizable templates',
         'Dashboard & tracking',
         'Document vault',

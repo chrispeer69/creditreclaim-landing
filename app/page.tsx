@@ -132,7 +132,10 @@ export default function Home() {
       {/* Pricing */}
       <section className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-8 py-24">
-          <h2 className="text-3xl font-light text-gray-800 mb-16">Simple pricing</h2>
+          <h2 className="text-3xl font-light text-gray-800 mb-4">Simple pricing</h2>
+          <p className="text-gray-600 font-light max-w-3xl mb-16 leading-relaxed">
+            Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.
+          </p>
           <div className="grid grid-cols-3 gap-8 max-w-5xl">
             <div className="border border-gray-200 p-10">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">DIY</h3>
@@ -142,7 +145,7 @@ export default function Home() {
               </div>
               <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
                 <li>✓ 5 training modules</li>
-                <li>✓ Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.</li>
+                <li>✓ Every winning dispute strategy — validation, challenges, 30-day forced response, plus FCRA/FDCPA escalation</li>
                 <li>✓ Dashboard & tracking</li>
                 <li>✓ Document vault</li>
               </ul>

@@ -28,7 +28,10 @@ export default function TierSelectionPage() {
       <div className="max-w-7xl mx-auto px-8 py-24">
         <div className="max-w-3xl mx-auto mb-20">
           <h1 className="text-4xl font-light text-gray-800 mb-4">Choose Your Path</h1>
-          <p className="text-lg text-gray-600 font-light">Both get results. Pick what fits your style and schedule.</p>
+          <p className="text-lg text-gray-600 font-light mb-6">Both get results. Pick what fits your style and schedule.</p>
+          <p className="text-base text-gray-600 font-light leading-relaxed">
+            Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-8 max-w-3xl mx-auto mb-20">
@@ -40,7 +43,7 @@ export default function TierSelectionPage() {
             </div>
             <ul className="space-y-3 mb-10 text-sm text-gray-700 font-light">
               <li>✓ 5 training modules (required)</li>
-              <li>✓ Every dispute strategy that wins. Built around the three core plays — debt validation, dispute challenges, and the 30-day forced response — plus a complete suite for edge cases like identity theft, SOL defense, pay-for-delete, and FCRA/FDCPA legal escalation.</li>
+              <li>✓ Every winning dispute strategy — validation, challenges, 30-day forced response, plus FCRA/FDCPA escalation</li>
               <li>✓ Customizable templates</li>
               <li>✓ Dashboard & tracking</li>
               <li>✓ Document vault</li>
