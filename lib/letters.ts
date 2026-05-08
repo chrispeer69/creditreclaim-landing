@@ -21,25 +21,45 @@ export type LetterSummary = Pick<
   'id' | 'number' | 'stage' | 'category' | 'title' | 'when_to_use'
 >;
 
-export async function fetchAllLetterSummaries(): Promise<LetterSummary[]> {
+export type LetterFetchError = {
+  message: string;
+  // True when the letters table itself is missing — i.e. the migration
+  // hasn't been applied yet. Lets the UI render a setup-state banner
+  // instead of a generic 500.
+  missingTable: boolean;
+};
+
+function classifyError(message: string): LetterFetchError {
+  return {
+    message,
+    missingTable: /schema cache|relation .* does not exist/i.test(message),
+  };
+}
+
+export async function fetchAllLetterSummaries(): Promise<{
+  letters: LetterSummary[];
+  error: LetterFetchError | null;
+}> {
   const { data, error } = await supabase
     .from('letters')
     .select('id, number, stage, category, title, when_to_use')
     .order('number', { ascending: true });
 
-  if (error) throw new Error(`Failed to load letters: ${error.message}`);
-  return (data as LetterSummary[]) ?? [];
+  if (error) return { letters: [], error: classifyError(error.message) };
+  return { letters: (data as LetterSummary[]) ?? [], error: null };
 }
 
-export async function fetchLetterById(id: string): Promise<Letter | null> {
+export async function fetchLetterById(
+  id: string,
+): Promise<{ letter: Letter | null; error: LetterFetchError | null }> {
   const { data, error } = await supabase
     .from('letters')
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to load letter: ${error.message}`);
-  return (data as Letter | null) ?? null;
+  if (error) return { letter: null, error: classifyError(error.message) };
+  return { letter: (data as Letter | null) ?? null, error: null };
 }
 
 // Used by the dashboard "Send today" panel — fetches up to N letters

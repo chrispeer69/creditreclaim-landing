@@ -2,12 +2,17 @@ import Link from 'next/link';
 import { fetchAllLetterSummaries } from '@/lib/letters';
 import LetterLibrary from './LetterLibrary';
 
+// Render on every request — the library is dashboard content, not a
+// static marketing page, and prerendering would hit Supabase at build
+// time before the table is seeded.
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Letter Library · CreditReclaim',
 };
 
 export default async function LettersPage() {
-  const letters = await fetchAllLetterSummaries();
+  const { letters, error } = await fetchAllLetterSummaries();
 
   const stages = Array.from(new Set(letters.map(l => l.stage))).sort();
   const categories = Array.from(new Set(letters.map(l => l.category))).sort();
@@ -53,11 +58,42 @@ export default async function LettersPage() {
           </p>
         </header>
 
-        <LetterLibrary
-          letters={letters}
-          stages={stages}
-          categories={categories}
-        />
+        {error?.missingTable ? (
+          <div className="bg-amber-50 border border-amber-200 p-6 sm:p-8">
+            <p className="text-xs uppercase tracking-wider text-amber-800 font-medium mb-2">
+              Library not yet seeded
+            </p>
+            <p className="text-sm text-gray-800 font-light mb-3">
+              The <code className="font-mono text-xs">letters</code> table
+              isn&apos;t in Supabase yet. Apply the migration in
+              <code className="font-mono text-xs">
+                {' '}
+                supabase/migrations/20260508000000_letters.sql
+              </code>{' '}
+              via the Supabase SQL Editor (or{' '}
+              <code className="font-mono text-xs">supabase db push</code>),
+              add{' '}
+              <code className="font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY</code>{' '}
+              to <code className="font-mono text-xs">.env.local</code>, then
+              run:
+            </p>
+            <pre className="bg-white border border-amber-200 px-4 py-3 text-xs font-mono text-gray-800 overflow-x-auto">
+{`node scripts/seed-letters.mjs`}
+            </pre>
+          </div>
+        ) : error ? (
+          <div className="bg-red-50 border border-red-200 p-6">
+            <p className="text-sm text-red-900 font-medium">
+              Couldn&apos;t load the letter library: {error.message}
+            </p>
+          </div>
+        ) : (
+          <LetterLibrary
+            letters={letters}
+            stages={stages}
+            categories={categories}
+          />
+        )}
       </main>
     </div>
   );

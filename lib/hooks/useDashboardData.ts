@@ -58,16 +58,42 @@ export type Recommendation = {
   created_at: string | null;
 };
 
+export type LetterSuggestion = {
+  id: string;
+  number: number;
+  stage: string;
+  category: string;
+  title: string;
+  when_to_use: string;
+};
+
 export type DashboardData = {
   user: User | null;
   credits: UserCredits | null;
   disputes: Dispute[];
   responses: DisputeResponse[];
   recommendations: Recommendation[];
+  suggestedLetters: LetterSuggestion[];
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
 };
+
+// Pick the dispute stage we surface in "Send today" based on what the
+// user has been through. Crude on purpose — refine when there's real
+// stage tracking in user_credits.
+function pickStage(disputes: Dispute[]): string {
+  const hasRejection = disputes.some(d => d.status === 'rejected');
+  const repeatedRejections =
+    disputes.filter(d => d.status === 'rejected').length >= 2;
+  if (repeatedRejections) {
+    return 'Stage 3: Legal — Attorney-Level Demands';
+  }
+  if (hasRejection) {
+    return 'Stage 2: Escalation & Collector Disputes';
+  }
+  return 'Stage 1: Initial Disputes - Direct to Bureaus';
+}
 
 export function useDashboardData(): DashboardData {
   const [user, setUser] = useState<User | null>(null);
@@ -75,6 +101,9 @@ export function useDashboardData(): DashboardData {
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [responses, setResponses] = useState<DisputeResponse[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [suggestedLetters, setSuggestedLetters] = useState<LetterSuggestion[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,6 +120,7 @@ export function useDashboardData(): DashboardData {
         setDisputes([]);
         setResponses([]);
         setRecommendations([]);
+        setSuggestedLetters([]);
         return;
       }
 
@@ -123,18 +153,41 @@ export function useDashboardData(): DashboardData {
       setDisputes(disputeRows);
       setRecommendations((recommendationsRes.data as Recommendation[]) ?? []);
 
+      const stage = pickStage(disputeRows);
+      const lettersPromise = supabase
+        .from('letters')
+        .select('id, number, stage, category, title, when_to_use')
+        .eq('stage', stage)
+        .order('number', { ascending: true })
+        .limit(3);
+
       const disputeIds = disputeRows.map(d => d.id);
-      if (disputeIds.length > 0) {
-        const { data: respData, error: respErr } = await supabase
-          .from('responses')
-          .select('*')
-          .in('dispute_id', disputeIds)
-          .order('received_date', { ascending: false });
-        if (respErr) throw respErr;
-        setResponses((respData as DisputeResponse[]) ?? []);
+      const responsesPromise =
+        disputeIds.length > 0
+          ? supabase
+              .from('responses')
+              .select('*')
+              .in('dispute_id', disputeIds)
+              .order('received_date', { ascending: false })
+          : Promise.resolve({ data: [], error: null } as const);
+
+      const [lettersRes, respRes] = await Promise.all([
+        lettersPromise,
+        responsesPromise,
+      ]);
+
+      // Letters are nice-to-have — never break the dashboard if the table
+      // hasn't been seeded yet.
+      if (!lettersRes.error) {
+        setSuggestedLetters(
+          (lettersRes.data as LetterSuggestion[] | null) ?? [],
+        );
       } else {
-        setResponses([]);
+        setSuggestedLetters([]);
       }
+
+      if (respRes.error) throw respRes.error;
+      setResponses((respRes.data as DisputeResponse[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
@@ -158,6 +211,7 @@ export function useDashboardData(): DashboardData {
     disputes,
     responses,
     recommendations,
+    suggestedLetters,
     loading,
     error,
     refetch: load,

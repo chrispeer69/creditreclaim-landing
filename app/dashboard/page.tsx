@@ -7,6 +7,7 @@ import {
   useDashboardData,
   type Dispute,
   type DisputeResponse,
+  type LetterSuggestion,
   type Recommendation,
 } from '@/lib/hooks/useDashboardData';
 
@@ -28,6 +29,7 @@ export default function DashboardPage() {
     disputes,
     responses,
     recommendations,
+    suggestedLetters,
     loading,
     error,
     refetch,
@@ -162,7 +164,7 @@ export default function DashboardPage() {
               </div>
               <div className="lg:col-span-1 flex flex-col gap-6">
                 <LettersTodayPanel
-                  draftDisputes={draftDisputes}
+                  letters={suggestedLetters}
                   isManaged={isManaged}
                 />
                 <ResponsesCelebrationPanel responses={recentResponses} />
@@ -580,102 +582,84 @@ function ThirtyDayRuleCallout() {
   );
 }
 
-type FallbackLetter = {
-  title: string;
-  why: string;
-  cta: string;
-};
-
-const FALLBACK_LETTERS: FallbackLetter[] = [
-  {
-    title: 'Validation request',
-    why:
-      "Forces collectors to prove the debt is yours under FDCPA §1692g — they often can't.",
-    cta: 'Use template',
-  },
-  {
-    title: 'Bureau dispute (round one)',
-    why:
-      'Starts the FCRA 30-day clock. Inaccuracies must come off; verified items still age out.',
-    cta: 'Use template',
-  },
-  {
-    title: 'Goodwill letter',
-    why:
-      'For paid-off lates with a clean recent record. Goes direct to creditor, not the bureau.',
-    cta: 'Use template',
-  },
-];
-
 function LettersTodayPanel({
-  draftDisputes,
+  letters,
   isManaged,
 }: {
-  draftDisputes: Dispute[];
+  letters: LetterSuggestion[];
   isManaged: boolean;
 }) {
-  const drafts = draftDisputes.slice(0, 3);
-  const fillers =
-    drafts.length < 3 ? FALLBACK_LETTERS.slice(0, 3 - drafts.length) : [];
-
   return (
     <div className="bg-white border border-gray-200">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold text-gray-900">Send today</h2>
-        <p className="text-xs text-gray-600 font-light mt-1">
-          {isManaged
-            ? 'Letters queued for our team.'
-            : 'Three letters that match your situation right now.'}
-        </p>
+      <div className="px-6 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Send today</h2>
+          <p className="text-xs text-gray-600 font-light mt-1">
+            {isManaged
+              ? 'Letters queued for our team.'
+              : 'Three letters that match your situation right now.'}
+          </p>
+        </div>
+        <Link
+          href="/dashboard/letters"
+          className="shrink-0 text-xs text-emerald-700 hover:text-emerald-900 font-medium underline"
+        >
+          Library →
+        </Link>
       </div>
-      <ul className="divide-y divide-gray-200">
-        {drafts.map(d => (
-          <li key={d.id} className="px-6 py-4">
-            <p className="text-sm font-medium text-gray-900 truncate">
-              {d.creditor_name || 'Unknown creditor'}
-            </p>
-            <p className="text-xs text-gray-600 font-light mt-1 mb-2">
-              {d.dispute_type || 'General dispute'}
-            </p>
-            <p className="text-xs text-gray-700 font-light mb-3">
-              <span className="font-medium text-gray-900">Why now:</span>{' '}
-              {whyNowFor(d)}
-            </p>
-            {isManaged ? (
-              <p className="text-xs text-gray-500 font-light">
-                Queued for our team
+      {letters.length === 0 ? (
+        <div className="px-6 py-8 text-sm text-gray-600 font-light text-center">
+          Letter library is loading. Try{' '}
+          <Link
+            href="/dashboard/letters"
+            className="text-emerald-700 hover:text-emerald-900 underline font-medium"
+          >
+            browsing the full library
+          </Link>{' '}
+          while we line these up.
+        </div>
+      ) : (
+        <ul className="divide-y divide-gray-200">
+          {letters.map(l => (
+            <li key={l.id} className="px-6 py-4">
+              <div className="flex items-start gap-3 mb-2">
+                <span className="shrink-0 text-xs font-medium uppercase tracking-wider text-gray-500 pt-0.5">
+                  No. {l.number}
+                </span>
+                <p className="text-sm font-medium text-gray-900">{l.title}</p>
+              </div>
+              <p className="text-xs text-gray-700 font-light mb-3 line-clamp-3">
+                <span className="font-medium text-gray-900">Why now:</span>{' '}
+                {firstSentence(l.when_to_use)}
               </p>
-            ) : (
-              <Link
-                href={`/dashboard/dispute/${d.id}`}
-                className="inline-block text-xs px-3 py-2 bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition"
-              >
-                Review &amp; send
-              </Link>
-            )}
-          </li>
-        ))}
-        {fillers.map((l, i) => (
-          <li key={`fallback-${i}`} className="px-6 py-4">
-            <p className="text-sm font-medium text-gray-900">{l.title}</p>
-            <p className="text-xs text-gray-700 font-light mt-2 mb-3">
-              <span className="font-medium text-gray-900">Why now:</span>{' '}
-              {l.why}
-            </p>
-            {/* TODO: wire to the letter template library when that route lands */}
-            <button
-              type="button"
-              disabled
-              className="text-xs px-3 py-2 bg-gray-100 text-gray-500 font-medium cursor-not-allowed"
-              title="Template library coming soon"
-            >
-              {l.cta}
-            </button>
-          </li>
-        ))}
-      </ul>
+              {isManaged ? (
+                <p className="text-xs text-gray-500 font-light">
+                  Queued for our team
+                </p>
+              ) : (
+                <Link
+                  href={`/dashboard/letters/${l.id}`}
+                  className="inline-block text-xs px-3 py-2 bg-emerald-700 text-white font-medium hover:bg-emerald-800 transition"
+                >
+                  Open template
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
+}
+
+function firstSentence(text: string): string {
+  const cleaned = text
+    .replace(/^•\s*/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const m = cleaned.match(/^(.{20,180}?[.!?])\s/);
+  if (m) return m[1];
+  return cleaned.length > 180 ? cleaned.slice(0, 179).trimEnd() + '…' : cleaned;
 }
 
 function ResponsesCelebrationPanel({
@@ -1070,17 +1054,6 @@ function classifyResponse(content: string | null): 'win' | 'pending' | 'neutral'
     return 'pending';
   }
   return 'neutral';
-}
-
-function whyNowFor(d: Dispute): string {
-  const t = (d.dispute_type || '').toLowerCase();
-  if (t.includes('validat'))
-    return "Collector must prove the debt under FDCPA §1692g — pressure on them, not you.";
-  if (t.includes('inaccur') || t.includes('error'))
-    return "FCRA forces removal if they can't verify within 30 days.";
-  if (t.includes('identity') || t.includes('fraud'))
-    return 'Identity theft disputes get fast-tracked — file ASAP.';
-  return 'Every day this sits in draft is a day off your 30-day clock.';
 }
 
 function isThisMonth(value: string | null): boolean {
