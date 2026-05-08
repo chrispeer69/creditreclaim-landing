@@ -34,16 +34,28 @@ export default async function LettersPage() {
           </div>
           <div className="flex items-center gap-4 sm:gap-6">
             <Link
+              href="/dashboard"
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/dashboard/disputes"
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              Disputes
+            </Link>
+            <Link
+              href="/dashboard/letters"
+              className="text-sm font-semibold text-gray-900"
+            >
+              Letter library
+            </Link>
+            <Link
               href="/dashboard/my-letters"
               className="text-sm text-gray-600 hover:text-gray-800 font-medium"
             >
               My letters
-            </Link>
-            <Link
-              href="/dashboard"
-              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
-            >
-              ← Back to dashboard
             </Link>
           </div>
         </div>

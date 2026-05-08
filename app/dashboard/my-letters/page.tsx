@@ -88,6 +88,12 @@ export default function MyLettersPage() {
               Dashboard
             </Link>
             <Link
+              href="/dashboard/disputes"
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              Disputes
+            </Link>
+            <Link
               href="/dashboard/letters"
               className="text-sm text-gray-600 hover:text-gray-800 font-medium"
             >

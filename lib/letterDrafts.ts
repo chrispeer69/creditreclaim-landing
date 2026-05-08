@@ -1,5 +1,36 @@
 import { supabase } from '@/lib/supabase';
 
+export type ResponseOutcome =
+  | 'deleted'
+  | 'verified'
+  | 'updated'
+  | 'no_response'
+  | 'other';
+
+export const RESPONSE_OUTCOMES: ReadonlyArray<{
+  value: ResponseOutcome;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'deleted', label: 'Deleted', hint: 'The item was removed' },
+  {
+    value: 'updated',
+    label: 'Updated',
+    hint: 'The item was changed but not removed',
+  },
+  {
+    value: 'verified',
+    label: 'Verified',
+    hint: 'Bureau says info is correct as is',
+  },
+  {
+    value: 'no_response',
+    label: 'No response',
+    hint: '30+ days, no answer received',
+  },
+  { value: 'other', label: 'Other', hint: '' },
+];
+
 export type LetterDraft = {
   id: string;
   user_id: string;
@@ -9,11 +40,15 @@ export type LetterDraft = {
   mailed_at: string | null;
   mailed_to: string | null;
   tracking_number: string | null;
+  response_received_at: string | null;
+  response_outcome: ResponseOutcome | null;
+  response_notes: string | null;
   created_at: string;
   updated_at: string;
 };
 
 export type DraftWithLetter = LetterDraft & {
+  letter_id: string | null;
   letter_title: string | null;
   letter_stage: string | null;
   letter_category: string | null;
@@ -121,7 +156,11 @@ export async function fetchDraft(
     const missing = /schema cache|relation .* does not exist/i.test(error.message);
     return { draft: null, missingTable: missing, error: error.message };
   }
-  return { draft: (data as LetterDraft | null) ?? null, missingTable: false, error: null };
+  return {
+    draft: data ? normalizeDraft(data as Partial<LetterDraft>) : null,
+    missingTable: false,
+    error: null,
+  };
 }
 
 export async function upsertDraft(args: {
@@ -145,7 +184,11 @@ export async function upsertDraft(args: {
     const missing = /schema cache|relation .* does not exist/i.test(error.message);
     return { draft: null, error: error.message, missingTable: missing };
   }
-  return { draft: (data as LetterDraft | null) ?? null, error: null, missingTable: false };
+  return {
+    draft: data ? normalizeDraft(data as Partial<LetterDraft>) : null,
+    error: null,
+    missingTable: false,
+  };
 }
 
 export async function markDraftAsMailed(args: {
@@ -168,7 +211,10 @@ export async function markDraftAsMailed(args: {
     .select('*')
     .maybeSingle();
   if (error) return { draft: null, error: error.message };
-  return { draft: (data as LetterDraft | null) ?? null, error: null };
+  return {
+    draft: data ? normalizeDraft(data as Partial<LetterDraft>) : null,
+    error: null,
+  };
 }
 
 // Resets an existing row back to a fresh draft — clears the mailed_*
@@ -195,7 +241,10 @@ export async function resetDraftToFresh(args: {
     .select('*')
     .maybeSingle();
   if (error) return { draft: null, error: error.message };
-  return { draft: (data as LetterDraft | null) ?? null, error: null };
+  return {
+    draft: data ? normalizeDraft(data as Partial<LetterDraft>) : null,
+    error: null,
+  };
 }
 
 export async function fetchUserCredits(
@@ -210,48 +259,135 @@ export async function fetchUserCredits(
   return (data as Record<string, unknown> | null) ?? null;
 }
 
-// Returns drafts joined with their master letter metadata (title/stage/
-// category come from the letters table by letter_number).
+// Returns drafts joined with their master letter metadata (id/title/
+// stage/category come from the letters table by letter_number). Tolerates
+// the response_* columns being absent (Phase 3.6 migration not yet
+// applied) by falling back to a select that excludes them.
 export async function fetchUserDrafts(
   userId: string,
-): Promise<{ drafts: DraftWithLetter[]; missingTable: boolean; error: string | null }> {
-  const { data: draftRows, error } = await supabase
+): Promise<{
+  drafts: DraftWithLetter[];
+  missingTable: boolean;
+  missingResponseCols: boolean;
+  error: string | null;
+}> {
+  let missingResponseCols = false;
+  let { data: draftRows, error } = await supabase
     .from('letter_drafts')
     .select('*')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
-  if (error) {
-    const missing = /schema cache|relation .* does not exist/i.test(error.message);
-    return { drafts: [], missingTable: missing, error: error.message };
+
+  if (error && /column .* (response_received_at|response_outcome|response_notes) .* does not exist/i.test(error.message)) {
+    missingResponseCols = true;
+    const fallback = await supabase
+      .from('letter_drafts')
+      .select('id, user_id, letter_number, customized_body, status, mailed_at, mailed_to, tracking_number, created_at, updated_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false });
+    draftRows = fallback.data;
+    error = fallback.error;
   }
 
-  const drafts = (draftRows as LetterDraft[] | null) ?? [];
+  if (error) {
+    const missing = /schema cache|relation .* does not exist/i.test(error.message);
+    return { drafts: [], missingTable: missing, missingResponseCols, error: error.message };
+  }
+
+  const drafts = ((draftRows as Partial<LetterDraft>[] | null) ?? []).map(
+    normalizeDraft,
+  );
   if (drafts.length === 0) {
-    return { drafts: [], missingTable: false, error: null };
+    return { drafts: [], missingTable: false, missingResponseCols, error: null };
   }
 
   const numbers = Array.from(new Set(drafts.map(d => d.letter_number)));
   const { data: letterRows } = await supabase
     .from('letters')
-    .select('number, title, stage, category')
+    .select('id, number, title, stage, category')
     .in('number', numbers);
 
-  const byNumber = new Map<number, { title: string; stage: string; category: string }>();
-  for (const r of (letterRows as Array<{ number: number; title: string; stage: string; category: string }> | null) ?? []) {
-    byNumber.set(r.number, { title: r.title, stage: r.stage, category: r.category });
+  const byNumber = new Map<
+    number,
+    { id: string; title: string; stage: string; category: string }
+  >();
+  for (const r of (letterRows as Array<{
+    id: string;
+    number: number;
+    title: string;
+    stage: string;
+    category: string;
+  }> | null) ?? []) {
+    byNumber.set(r.number, {
+      id: r.id,
+      title: r.title,
+      stage: r.stage,
+      category: r.category,
+    });
   }
 
   const joined: DraftWithLetter[] = drafts.map(d => {
     const m = byNumber.get(d.letter_number);
     return {
       ...d,
+      letter_id: m?.id ?? null,
       letter_title: m?.title ?? null,
       letter_stage: m?.stage ?? null,
       letter_category: m?.category ?? null,
     };
   });
 
-  return { drafts: joined, missingTable: false, error: null };
+  return { drafts: joined, missingTable: false, missingResponseCols, error: null };
+}
+
+function normalizeDraft(row: Partial<LetterDraft>): LetterDraft {
+  return {
+    id: row.id as string,
+    user_id: row.user_id as string,
+    letter_number: row.letter_number as number,
+    customized_body: row.customized_body as string,
+    status: (row.status as LetterDraft['status']) ?? 'draft',
+    mailed_at: row.mailed_at ?? null,
+    mailed_to: row.mailed_to ?? null,
+    tracking_number: row.tracking_number ?? null,
+    response_received_at: row.response_received_at ?? null,
+    response_outcome: row.response_outcome ?? null,
+    response_notes: row.response_notes ?? null,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+export async function logResponse(args: {
+  userId: string;
+  letterNumber: number;
+  receivedAt: string; // ISO
+  outcome: ResponseOutcome;
+  notes: string | null;
+}): Promise<{ draft: LetterDraft | null; error: string | null; missingCols: boolean }> {
+  const { data, error } = await supabase
+    .from('letter_drafts')
+    .update({
+      response_received_at: args.receivedAt,
+      response_outcome: args.outcome,
+      response_notes: args.notes,
+    })
+    .eq('user_id', args.userId)
+    .eq('letter_number', args.letterNumber)
+    .select('*')
+    .maybeSingle();
+  if (error) {
+    const missingCols =
+      /column .* (response_received_at|response_outcome|response_notes) .* does not exist/i.test(
+        error.message,
+      );
+    return { draft: null, error: error.message, missingCols };
+  }
+  return {
+    draft: data ? normalizeDraft(data as Partial<LetterDraft>) : null,
+    error: null,
+    missingCols: false,
+  };
 }
 
 // FCRA §611(a)(1)(A) gives bureaus 30 days from receipt. We start the

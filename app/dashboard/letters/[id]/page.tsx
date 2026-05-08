@@ -42,6 +42,12 @@ export default async function LetterDetailPage({
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <Link
+              href="/dashboard/disputes"
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              Disputes
+            </Link>
+            <Link
               href="/dashboard/my-letters"
               className="text-sm text-gray-600 hover:text-gray-800 font-medium"
             >

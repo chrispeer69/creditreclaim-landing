@@ -218,9 +218,15 @@ function DashboardNav({ email, tier }: { email: string; tier: string }) {
           )}
           <Link
             href="/dashboard"
-            className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            className="text-sm font-semibold text-gray-900"
           >
             Dashboard
+          </Link>
+          <Link
+            href="/dashboard/disputes"
+            className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+          >
+            Disputes
           </Link>
           <Link
             href="/dashboard/letters"
@@ -448,15 +454,15 @@ function ScoreTrajectory({
 function LettersInFlightTile({
   counts,
 }: {
-  counts: { awaitingResponse: number; overdue: number; readyToMail: number };
+  counts: { inMail: number; overdue: number; responsesReceived: number };
 }) {
-  const total = counts.awaitingResponse + counts.overdue + counts.readyToMail;
+  const total = counts.inMail + counts.overdue + counts.responsesReceived;
   if (total === 0) {
     return (
       <section className="mb-10 bg-white border border-gray-200 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-1">
-            Letters in flight
+            Dispute board
           </p>
           <p className="text-sm text-gray-700 font-light">
             No active disputes. Browse the Letter Library to start.
@@ -482,27 +488,31 @@ function LettersInFlightTile({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-3">
-            Letters in flight
+            Dispute board
           </p>
           <div className="flex flex-wrap gap-x-8 gap-y-3">
             <CountStat
-              value={counts.awaitingResponse}
-              label="awaiting response"
+              value={counts.inMail}
+              label="in the mail"
               tone="neutral"
             />
-            <CountStat value={counts.overdue} label="overdue" tone="red" />
             <CountStat
-              value={counts.readyToMail}
-              label="ready to mail"
-              tone="blue"
+              value={counts.overdue}
+              label="⚠ overdue"
+              tone="red"
+            />
+            <CountStat
+              value={counts.responsesReceived}
+              label="responses received"
+              tone="emerald"
             />
           </div>
         </div>
         <Link
-          href="/dashboard/my-letters"
+          href="/dashboard/disputes"
           className="shrink-0 text-xs px-3 py-2 bg-gray-900 text-white font-semibold hover:bg-gray-800 transition self-start sm:self-auto"
         >
-          View all →
+          View board →
         </Link>
       </div>
       {counts.overdue > 0 && (
@@ -522,7 +532,7 @@ function CountStat({
 }: {
   value: number;
   label: string;
-  tone: 'neutral' | 'red' | 'blue';
+  tone: 'neutral' | 'red' | 'blue' | 'emerald';
 }) {
   const cls =
     value === 0
@@ -531,7 +541,9 @@ function CountStat({
         ? 'text-red-700'
         : tone === 'blue'
           ? 'text-blue-700'
-          : 'text-gray-900';
+          : tone === 'emerald'
+            ? 'text-emerald-700'
+            : 'text-gray-900';
   return (
     <div>
       <div className={`text-3xl sm:text-4xl font-light ${cls}`}>{value}</div>
