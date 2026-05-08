@@ -30,6 +30,7 @@ export default function DashboardPage() {
     responses,
     recommendations,
     suggestedLetters,
+    lettersInFlight,
     loading,
     error,
     refetch,
@@ -153,6 +154,8 @@ export default function DashboardPage() {
             {initialScore != null && currentScore > 0 && (
               <ScoreTrajectory initial={initialScore} current={currentScore} />
             )}
+
+            <LettersInFlightTile counts={lettersInFlight} />
 
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
               <div className="lg:col-span-2 flex flex-col gap-6">
@@ -439,6 +442,101 @@ function ScoreTrajectory({
         <span>850</span>
       </div>
     </section>
+  );
+}
+
+function LettersInFlightTile({
+  counts,
+}: {
+  counts: { awaitingResponse: number; overdue: number; readyToMail: number };
+}) {
+  const total = counts.awaitingResponse + counts.overdue + counts.readyToMail;
+  if (total === 0) {
+    return (
+      <section className="mb-10 bg-white border border-gray-200 p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-1">
+            Letters in flight
+          </p>
+          <p className="text-sm text-gray-700 font-light">
+            No active disputes. Browse the Letter Library to start.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/letters"
+          className="shrink-0 text-xs px-3 py-2 bg-gray-900 text-white font-semibold hover:bg-gray-800 transition"
+        >
+          Open library →
+        </Link>
+      </section>
+    );
+  }
+  return (
+    <section
+      className={`mb-10 border p-5 sm:p-6 ${
+        counts.overdue > 0
+          ? 'bg-red-50 border-red-200'
+          : 'bg-white border-gray-200'
+      }`}
+    >
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-gray-500 font-medium mb-3">
+            Letters in flight
+          </p>
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            <CountStat
+              value={counts.awaitingResponse}
+              label="awaiting response"
+              tone="neutral"
+            />
+            <CountStat value={counts.overdue} label="overdue" tone="red" />
+            <CountStat
+              value={counts.readyToMail}
+              label="ready to mail"
+              tone="blue"
+            />
+          </div>
+        </div>
+        <Link
+          href="/dashboard/my-letters"
+          className="shrink-0 text-xs px-3 py-2 bg-gray-900 text-white font-semibold hover:bg-gray-800 transition self-start sm:self-auto"
+        >
+          View all →
+        </Link>
+      </div>
+      {counts.overdue > 0 && (
+        <p className="mt-4 text-xs text-red-700 font-medium">
+          FCRA § 1681i(a)(1)(A) gives bureaus 30 days. Overdue letters can be
+          escalated.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function CountStat({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: 'neutral' | 'red' | 'blue';
+}) {
+  const cls =
+    value === 0
+      ? 'text-gray-400'
+      : tone === 'red'
+        ? 'text-red-700'
+        : tone === 'blue'
+          ? 'text-blue-700'
+          : 'text-gray-900';
+  return (
+    <div>
+      <div className={`text-3xl sm:text-4xl font-light ${cls}`}>{value}</div>
+      <div className="mt-1 text-xs text-gray-600 font-light">{label}</div>
+    </div>
   );
 }
 

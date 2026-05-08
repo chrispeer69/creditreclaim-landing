@@ -6,11 +6,15 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   applyBracketReplacer,
+  BUREAU_CHOICES,
   fetchDraft,
   fetchUserCredits,
+  formatShortDate,
   identityFromCredits,
+  markDraftAsMailed,
   relativeTime,
   upsertDraft,
+  type BureauChoice,
   type IdentityFields,
   type LetterDraft,
 } from '@/lib/letterDrafts';
@@ -53,6 +57,13 @@ export default function CustomizeClient(props: {
   const [draft, setDraft] = useState<LetterDraft | null>(null);
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' });
   const [confirmReset, setConfirmReset] = useState(false);
+  const [mailModalOpen, setMailModalOpen] = useState(false);
+  const [mailBusy, setMailBusy] = useState(false);
+  const [mailError, setMailError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const isSent = draft?.status === 'sent';
+  const hasFinalized = draft?.status === 'finalized' || draft?.status === 'sent';
 
   // Always read the latest values out of refs inside async callbacks
   // (effects, autosave, beforeunload) so we never write stale text back.
@@ -243,6 +254,48 @@ export default function CustomizeClient(props: {
     router.push('/dashboard/letters');
   }, [router, saveNow]);
 
+  const onSendAnother = useCallback(() => {
+    router.push('/dashboard/letters');
+  }, [router]);
+
+  const onMarkAsMailedSubmit = useCallback(
+    async (args: {
+      mailedTo: string;
+      mailedAt: string;
+      trackingNumber: string | null;
+    }) => {
+      const uid = userIdRef.current;
+      if (!uid) return;
+      setMailBusy(true);
+      setMailError(null);
+      const { draft: updated, error } = await markDraftAsMailed({
+        userId: uid,
+        letterNumber,
+        mailedTo: args.mailedTo,
+        mailedAt: args.mailedAt,
+        trackingNumber: args.trackingNumber,
+      });
+      setMailBusy(false);
+      if (error || !updated) {
+        setMailError(error ?? 'Could not mark as mailed.');
+        return;
+      }
+      setDraft(updated);
+      setMailModalOpen(false);
+      setToast(
+        'Letter marked as mailed. Bureau response expected within 30 days under FCRA § 1681i(a)(1)(A).',
+      );
+    },
+    [letterNumber],
+  );
+
+  // Auto-dismiss the success toast.
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 6000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
   // ── Render ───────────────────────────────────────────────────────
   if (!authChecked) {
     return (
@@ -300,61 +353,121 @@ export default function CustomizeClient(props: {
           </div>
         )}
 
-        <div className="sticky top-[64px] z-30 -mx-4 sm:mx-0 bg-gray-900 text-white border border-gray-900 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden no-print">
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={onSaveClick}
-              disabled={saveState.kind === 'saving' || body === savedBody}
-              className="text-xs px-3 py-2 bg-emerald-500 text-gray-900 font-semibold hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              Save draft
-            </button>
-            <button
-              type="button"
-              onClick={onPrintClick}
-              disabled={saveState.kind === 'saving'}
-              className="text-xs px-3 py-2 bg-white text-gray-900 font-semibold hover:bg-gray-100 disabled:opacity-50 transition"
-            >
-              Print
-            </button>
-            <button
-              type="button"
-              onClick={onStartOver}
-              className={`text-xs px-3 py-2 font-medium border transition ${
-                confirmReset
-                  ? 'bg-red-600 border-red-600 text-white hover:bg-red-700'
-                  : 'border-gray-600 text-gray-100 hover:bg-gray-800'
-              }`}
-            >
-              {confirmReset ? 'Click again to confirm reset' : 'Start over'}
-            </button>
-            {confirmReset && (
+        {toast && (
+          <div className="mb-3 p-3 border border-emerald-300 bg-emerald-50 text-sm text-emerald-900 print:hidden">
+            {toast}
+          </div>
+        )}
+
+        {isSent ? (
+          <div className="sticky top-[64px] z-30 -mx-4 sm:mx-0 bg-emerald-700 text-white border border-emerald-700 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden no-print">
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wider text-emerald-100 font-medium">
+                Sent
+              </p>
+              <p className="text-sm font-medium">
+                Mailed to {draft?.mailed_to ?? '—'} on{' '}
+                {formatShortDate(draft?.mailed_at ?? null)}. Awaiting response.
+              </p>
+              {draft?.tracking_number && (
+                <p className="text-xs text-emerald-100 font-light mt-0.5">
+                  Tracking: {draft.tracking_number}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmReset(false)}
+                onClick={onSendAnother}
+                className="text-xs px-3 py-2 bg-white text-gray-900 font-semibold hover:bg-gray-100 transition"
+              >
+                Send another
+              </button>
+              <button
+                type="button"
+                onClick={onBackToLibrary}
+                className="text-xs px-3 py-2 font-medium text-emerald-100 hover:text-white"
+              >
+                ← Back to library
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="sticky top-[64px] z-30 -mx-4 sm:mx-0 bg-gray-900 text-white border border-gray-900 px-4 sm:px-5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden no-print">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onSaveClick}
+                disabled={saveState.kind === 'saving' || body === savedBody}
+                className="text-xs px-3 py-2 bg-emerald-500 text-gray-900 font-semibold hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                Save draft
+              </button>
+              <button
+                type="button"
+                onClick={onPrintClick}
+                disabled={saveState.kind === 'saving'}
+                className="text-xs px-3 py-2 bg-white text-gray-900 font-semibold hover:bg-gray-100 disabled:opacity-50 transition"
+              >
+                Print
+              </button>
+              <button
+                type="button"
+                onClick={() => setMailModalOpen(true)}
+                disabled={!hasFinalized}
+                title={hasFinalized ? undefined : 'Print the letter first.'}
+                className="text-xs px-3 py-2 bg-blue-500 text-white font-semibold hover:bg-blue-400 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed transition"
+              >
+                Mark as mailed
+              </button>
+              <button
+                type="button"
+                onClick={onStartOver}
+                className={`text-xs px-3 py-2 font-medium border transition ${
+                  confirmReset
+                    ? 'bg-red-600 border-red-600 text-white hover:bg-red-700'
+                    : 'border-gray-600 text-gray-100 hover:bg-gray-800'
+                }`}
+              >
+                {confirmReset ? 'Click again to confirm reset' : 'Start over'}
+              </button>
+              {confirmReset && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmReset(false)}
+                  className="text-xs px-3 py-2 font-medium text-gray-300 hover:text-white"
+                >
+                  Cancel
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onBackToLibrary}
                 className="text-xs px-3 py-2 font-medium text-gray-300 hover:text-white"
               >
-                Cancel
+                ← Back to library
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onBackToLibrary}
-              className="text-xs px-3 py-2 font-medium text-gray-300 hover:text-white"
-            >
-              ← Back to library
-            </button>
+            </div>
+            <SaveStateLine state={saveState} />
           </div>
-          <SaveStateLine state={saveState} />
-        </div>
+        )}
 
         <p className="mt-3 mb-2 text-xs text-gray-600 font-light print:hidden">
-          Identity brackets like{' '}
-          <code className="font-mono">[Your Full Legal Name]</code> get
-          pre-filled where we have data; account-specific brackets like{' '}
-          <code className="font-mono">[Account Number]</code> are yours to
-          fill in.
+          {isSent ? (
+            <span className="text-emerald-800">
+              This letter is locked — the text below is the record of what
+              you mailed. Click <span className="font-semibold">Send another</span>{' '}
+              to start a different letter.
+            </span>
+          ) : (
+            <>
+              Identity brackets like{' '}
+              <code className="font-mono">[Your Full Legal Name]</code> get
+              pre-filled where we have data; account-specific brackets like{' '}
+              <code className="font-mono">[Account Number]</code> are yours to
+              fill in.
+            </>
+          )}
         </p>
 
         <div className="bg-white border border-gray-200 print:border-0">
@@ -363,7 +476,10 @@ export default function CustomizeClient(props: {
             onChange={e => setBody(e.target.value)}
             onBlur={onBlur}
             spellCheck={true}
-            className="w-full min-h-[70vh] px-4 sm:px-8 py-6 sm:py-8 text-sm sm:text-[15px] leading-7 text-gray-900 font-mono whitespace-pre-wrap focus:outline-none resize-y print:hidden"
+            readOnly={isSent}
+            className={`w-full min-h-[70vh] px-4 sm:px-8 py-6 sm:py-8 text-sm sm:text-[15px] leading-7 text-gray-900 font-mono whitespace-pre-wrap focus:outline-none resize-y print:hidden ${
+              isSent ? 'bg-gray-50 cursor-default' : ''
+            }`}
           />
           <div
             className="print-letter-body hidden print:block whitespace-pre-wrap"
@@ -374,11 +490,25 @@ export default function CustomizeClient(props: {
         </div>
 
         <p className="mt-4 text-xs text-gray-500 font-light print:hidden">
-          {draft
-            ? `Draft saved — status: ${draft.status}`
-            : 'No draft saved yet — your edits will save automatically every 30 seconds.'}
+          {isSent
+            ? `Sent — locked record of what you mailed.`
+            : draft
+              ? `Draft saved — status: ${draft.status}`
+              : 'No draft saved yet — your edits will save automatically every 30 seconds.'}
         </p>
       </main>
+
+      {mailModalOpen && (
+        <MarkAsMailedModal
+          busy={mailBusy}
+          error={mailError}
+          onCancel={() => {
+            setMailModalOpen(false);
+            setMailError(null);
+          }}
+          onSubmit={onMarkAsMailedSubmit}
+        />
+      )}
 
       <style>{`
         @media print {
@@ -466,4 +596,166 @@ function Chip({ children }: { children: React.ReactNode }) {
 function shortStage(stage: string): string {
   const m = stage.match(/^(Stage\s+\d+)/i);
   return m ? m[1] : stage;
+}
+
+function MarkAsMailedModal({
+  busy,
+  error,
+  onCancel,
+  onSubmit,
+}: {
+  busy: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onSubmit: (args: {
+    mailedTo: string;
+    mailedAt: string;
+    trackingNumber: string | null;
+  }) => void | Promise<void>;
+}) {
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [bureau, setBureau] = useState<BureauChoice>('Equifax');
+  const [otherText, setOtherText] = useState('');
+  const [tracking, setTracking] = useState('');
+  const [mailedDate, setMailedDate] = useState(todayIso);
+
+  const recipient =
+    bureau === 'Other' ? otherText.trim() : (bureau as string);
+  const submitDisabled =
+    busy || !recipient || !mailedDate || isFutureDate(mailedDate);
+
+  const submit = () => {
+    if (submitDisabled) return;
+    void onSubmit({
+      mailedTo: recipient,
+      mailedAt: new Date(`${mailedDate}T00:00:00Z`).toISOString(),
+      trackingNumber: tracking.trim() === '' ? null : tracking.trim(),
+    });
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 print:hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="mark-as-mailed-title"
+    >
+      <div className="bg-white border border-gray-200 w-full max-w-lg p-6 sm:p-7">
+        <h3
+          id="mark-as-mailed-title"
+          className="text-lg font-semibold text-gray-900"
+        >
+          Mark this letter as mailed
+        </h3>
+        <p className="mt-1 text-xs text-gray-600 font-light">
+          Once marked, this draft locks as a record of what you mailed.
+        </p>
+
+        <fieldset className="mt-5">
+          <legend className="text-xs uppercase tracking-wider text-gray-500 mb-2">
+            Who did you mail it to?
+          </legend>
+          <div className="space-y-2">
+            {([...BUREAU_CHOICES, 'Other'] as BureauChoice[]).map(opt => (
+              <label
+                key={opt}
+                className="flex items-center gap-3 text-sm text-gray-800 cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="bureau"
+                  value={opt}
+                  checked={bureau === opt}
+                  onChange={() => setBureau(opt)}
+                  className="accent-emerald-600"
+                />
+                <span>{opt}</span>
+                {opt === 'Other' && bureau === 'Other' && (
+                  <input
+                    type="text"
+                    autoFocus
+                    value={otherText}
+                    onChange={e => setOtherText(e.target.value)}
+                    placeholder="e.g. Midland Funding LLC"
+                    className="flex-1 ml-2 px-2 py-1 text-sm border border-gray-300 focus:outline-none focus:border-emerald-500"
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="mt-5">
+          <label
+            htmlFor="tracking"
+            className="block text-xs uppercase tracking-wider text-gray-500 mb-2"
+          >
+            Tracking number (optional)
+          </label>
+          <input
+            id="tracking"
+            type="text"
+            value={tracking}
+            onChange={e => setTracking(e.target.value)}
+            placeholder="9400 1000 0000 0000 0000 00"
+            className="w-full px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:border-emerald-500 font-mono"
+          />
+          <p className="mt-1 text-xs text-gray-600 font-light">
+            Found on your USPS Certified Mail receipt. Add it later if you
+            don&apos;t have it yet.
+          </p>
+        </div>
+
+        <div className="mt-5">
+          <label
+            htmlFor="mailed-date"
+            className="block text-xs uppercase tracking-wider text-gray-500 mb-2"
+          >
+            Date mailed
+          </label>
+          <input
+            id="mailed-date"
+            type="date"
+            value={mailedDate}
+            max={todayIso}
+            onChange={e => setMailedDate(e.target.value)}
+            className="px-3 py-2 text-sm border border-gray-300 focus:outline-none focus:border-emerald-500"
+          />
+          {isFutureDate(mailedDate) && (
+            <p className="mt-1 text-xs text-red-700">
+              The mailed date can&apos;t be in the future.
+            </p>
+          )}
+        </div>
+
+        {error && (
+          <p className="mt-4 text-sm text-red-700 font-medium">{error}</p>
+        )}
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="text-sm px-4 py-2 text-gray-700 hover:text-gray-900 font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitDisabled}
+            className="text-sm px-5 py-2 bg-gray-900 text-white font-semibold hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            {busy ? 'Saving…' : 'Mark as mailed'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function isFutureDate(yyyyMmDd: string): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return yyyyMmDd > today;
 }

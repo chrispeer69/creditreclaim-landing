@@ -67,6 +67,12 @@ export type LetterSuggestion = {
   when_to_use: string;
 };
 
+export type LettersInFlight = {
+  awaitingResponse: number; // sent within the 30-day window
+  overdue: number; // sent and past 30 days
+  readyToMail: number; // status='finalized'
+};
+
 export type DashboardData = {
   user: User | null;
   credits: UserCredits | null;
@@ -74,6 +80,7 @@ export type DashboardData = {
   responses: DisputeResponse[];
   recommendations: Recommendation[];
   suggestedLetters: LetterSuggestion[];
+  lettersInFlight: LettersInFlight;
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -104,6 +111,11 @@ export function useDashboardData(): DashboardData {
   const [suggestedLetters, setSuggestedLetters] = useState<LetterSuggestion[]>(
     [],
   );
+  const [lettersInFlight, setLettersInFlight] = useState<LettersInFlight>({
+    awaitingResponse: 0,
+    overdue: 0,
+    readyToMail: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +133,7 @@ export function useDashboardData(): DashboardData {
         setResponses([]);
         setRecommendations([]);
         setSuggestedLetters([]);
+        setLettersInFlight({ awaitingResponse: 0, overdue: 0, readyToMail: 0 });
         return;
       }
 
@@ -171,9 +184,17 @@ export function useDashboardData(): DashboardData {
               .order('received_date', { ascending: false })
           : Promise.resolve({ data: [], error: null } as const);
 
-      const [lettersRes, respRes] = await Promise.all([
+      // Pull every letter_drafts row for the user — usually a small set.
+      // We bucket client-side to avoid three round-trips for the tile.
+      const draftsPromise = supabase
+        .from('letter_drafts')
+        .select('status, mailed_at')
+        .eq('user_id', currentUser.id);
+
+      const [lettersRes, respRes, draftsRes] = await Promise.all([
         lettersPromise,
         responsesPromise,
+        draftsPromise,
       ]);
 
       // Letters are nice-to-have — never break the dashboard if the table
@@ -184,6 +205,16 @@ export function useDashboardData(): DashboardData {
         );
       } else {
         setSuggestedLetters([]);
+      }
+
+      if (!draftsRes.error) {
+        setLettersInFlight(
+          countLettersInFlight(
+            (draftsRes.data as Array<{ status: string; mailed_at: string | null }> | null) ?? [],
+          ),
+        );
+      } else {
+        setLettersInFlight({ awaitingResponse: 0, overdue: 0, readyToMail: 0 });
       }
 
       if (respRes.error) throw respRes.error;
@@ -212,10 +243,42 @@ export function useDashboardData(): DashboardData {
     responses,
     recommendations,
     suggestedLetters,
+    lettersInFlight,
     loading,
     error,
     refetch: load,
   };
+}
+
+const FCRA_DAYS = 30;
+function countLettersInFlight(
+  rows: Array<{ status: string; mailed_at: string | null }>,
+): LettersInFlight {
+  let awaitingResponse = 0;
+  let overdue = 0;
+  let readyToMail = 0;
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  for (const r of rows) {
+    if (r.status === 'finalized') {
+      readyToMail++;
+      continue;
+    }
+    if (r.status !== 'sent') continue;
+    if (!r.mailed_at) {
+      awaitingResponse++;
+      continue;
+    }
+    const mailed = new Date(r.mailed_at).getTime();
+    if (Number.isNaN(mailed)) {
+      awaitingResponse++;
+      continue;
+    }
+    const elapsed = Math.floor((now - mailed) / dayMs);
+    if (elapsed > FCRA_DAYS) overdue++;
+    else awaitingResponse++;
+  }
+  return { awaitingResponse, overdue, readyToMail };
 }
 
 // Single-dispute fetcher used by the detail page; co-located so the

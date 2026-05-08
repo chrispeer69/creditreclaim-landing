@@ -6,8 +6,11 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import {
   fetchUserDrafts,
+  formatShortDate,
+  overdueState,
   relativeTime,
   type DraftWithLetter,
+  type OverdueState,
 } from '@/lib/letterDrafts';
 
 export default function MyLettersPage() {
@@ -38,7 +41,7 @@ export default function MyLettersPage() {
 
       if (result.missingTable) setMissingTable(true);
       else if (result.error) setError(result.error);
-      else setDrafts(result.drafts);
+      else setDrafts(sortForList(result.drafts));
 
       // Map letter_number → letter id so the resume link uses the same
       // /dashboard/letters/{id}/customize URL pattern as everything else.
@@ -143,6 +146,7 @@ export default function MyLettersPage() {
               const href = letterId
                 ? `/dashboard/letters/${letterId}/customize`
                 : '/dashboard/letters';
+              const od = d.status === 'sent' ? overdueState(d.mailed_at) : null;
               return (
                 <li key={d.id}>
                   <Link
@@ -167,13 +171,18 @@ export default function MyLettersPage() {
                             .filter(Boolean)
                             .join(' · ')}
                         </p>
-                        <p className="text-xs text-gray-700 font-light mt-2">
-                          Last edited {relativeTime(d.updated_at)} ·{' '}
-                          <StatusBadge status={d.status} />
-                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <StatusBadge status={d.status} mailedAt={d.mailed_at} />
+                          <span className="text-xs text-gray-600 font-light">
+                            {d.status === 'sent'
+                              ? `Mailed ${relativeTime(d.mailed_at)}`
+                              : `Last edited ${relativeTime(d.updated_at)}`}
+                          </span>
+                        </div>
+                        {od && <OverdueLine state={od} />}
                       </div>
                       <div className="shrink-0 self-center text-emerald-700 text-sm font-medium">
-                        Resume →
+                        {d.status === 'sent' ? 'View →' : 'Resume →'}
                       </div>
                     </div>
                   </Link>
@@ -187,32 +196,94 @@ export default function MyLettersPage() {
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    draft: {
-      label: 'Draft',
-      cls: 'bg-gray-100 text-gray-800 border-gray-200',
-    },
-    finalized: {
-      label: 'Ready to mail',
-      cls: 'bg-blue-50 text-blue-800 border-blue-200',
-    },
-    sent: {
-      label: 'Sent',
-      cls: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-    },
-  };
-  const m = map[status] ?? {
-    label: status,
-    cls: 'bg-gray-100 text-gray-800 border-gray-200',
-  };
+function StatusBadge({
+  status,
+  mailedAt,
+}: {
+  status: string;
+  mailedAt: string | null;
+}) {
+  if (status === 'sent') {
+    return (
+      <span className="inline-block text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 border bg-emerald-50 text-emerald-800 border-emerald-200">
+        Sent {formatShortDate(mailedAt)}
+      </span>
+    );
+  }
+  if (status === 'finalized') {
+    return (
+      <span className="inline-block text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 border bg-blue-50 text-blue-800 border-blue-200">
+        Ready to mail
+      </span>
+    );
+  }
+  if (status === 'draft') {
+    return (
+      <span className="inline-block text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 border bg-gray-100 text-gray-800 border-gray-200">
+        Draft
+      </span>
+    );
+  }
   return (
-    <span
-      className={`inline-block text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 border ${m.cls}`}
-    >
-      {m.label}
+    <span className="inline-block text-[11px] font-medium uppercase tracking-wider px-2 py-0.5 border bg-gray-100 text-gray-800 border-gray-200">
+      {status}
     </span>
   );
+}
+
+function OverdueLine({ state }: { state: OverdueState }) {
+  if (state.kind === 'in_window') {
+    return (
+      <p className="mt-1 text-xs text-gray-500 font-light">
+        Response expected by {formatShortDate(state.expectedBy)}
+      </p>
+    );
+  }
+  if (state.kind === 'overdue') {
+    return (
+      <p className="mt-1 text-xs text-amber-800 font-medium">
+        Response overdue — {state.daysOver} {state.daysOver === 1 ? 'day' : 'days'} past
+        the 30-day deadline
+      </p>
+    );
+  }
+  return (
+    <div className="mt-1">
+      <p className="text-xs text-red-700 font-semibold">
+        Significantly overdue — {state.daysOver} days past deadline
+      </p>
+      <p className="text-xs text-red-700 font-light">
+        FCRA § 1681i(a)(1)(A) gives bureaus 30 days. Consider escalating to
+        Letter 2 (MOV) or Letter 46 (Round 3).
+      </p>
+    </div>
+  );
+}
+
+// Sort priority:
+//   1. sent + overdue (loudest signal)
+//   2. drafts and finalized (still being worked on)
+//   3. sent within the 30-day window
+// Ties broken by updated_at desc.
+function sortForList(rows: DraftWithLetter[]): DraftWithLetter[] {
+  const bucket = (d: DraftWithLetter): number => {
+    if (d.status === 'sent') {
+      const od = overdueState(d.mailed_at);
+      if (od && (od.kind === 'overdue' || od.kind === 'severely_overdue')) {
+        return 0;
+      }
+      return 2;
+    }
+    return 1;
+  };
+  return [...rows].sort((a, b) => {
+    const ba = bucket(a);
+    const bb = bucket(b);
+    if (ba !== bb) return ba - bb;
+    const ta = new Date(a.updated_at).getTime();
+    const tb = new Date(b.updated_at).getTime();
+    return tb - ta;
+  });
 }
 
 function EmptyState() {

@@ -72,7 +72,11 @@ export default async function LetterDetailPage({
           </div>
         </header>
 
-        <CustomizeCTA letterId={letter.id} letterNumber={letter.number} />
+        <CustomizeCTA
+          letterId={letter.id}
+          letterNumber={letter.number}
+          masterTemplateBody={letter.template_body}
+        />
 
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10 print:hidden">
           <Block title="When to use" body={letter.when_to_use} tone="amber" />

@@ -148,6 +148,56 @@ export async function upsertDraft(args: {
   return { draft: (data as LetterDraft | null) ?? null, error: null, missingTable: false };
 }
 
+export async function markDraftAsMailed(args: {
+  userId: string;
+  letterNumber: number;
+  mailedTo: string;
+  mailedAt: string; // ISO
+  trackingNumber: string | null;
+}): Promise<{ draft: LetterDraft | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('letter_drafts')
+    .update({
+      status: 'sent',
+      mailed_at: args.mailedAt,
+      mailed_to: args.mailedTo,
+      tracking_number: args.trackingNumber,
+    })
+    .eq('user_id', args.userId)
+    .eq('letter_number', args.letterNumber)
+    .select('*')
+    .maybeSingle();
+  if (error) return { draft: null, error: error.message };
+  return { draft: (data as LetterDraft | null) ?? null, error: null };
+}
+
+// Resets an existing row back to a fresh draft — clears the mailed_*
+// trio and the tracking number, sets status to 'draft', and writes a
+// new body. Used by "Start a new dispute with this letter" on the
+// detail page after a row has been sent. We trade history for the
+// one-row-per-(user, letter) invariant; Phase 3.6 may revisit.
+export async function resetDraftToFresh(args: {
+  userId: string;
+  letterNumber: number;
+  customized_body: string;
+}): Promise<{ draft: LetterDraft | null; error: string | null }> {
+  const { data, error } = await supabase
+    .from('letter_drafts')
+    .update({
+      status: 'draft',
+      customized_body: args.customized_body,
+      mailed_at: null,
+      mailed_to: null,
+      tracking_number: null,
+    })
+    .eq('user_id', args.userId)
+    .eq('letter_number', args.letterNumber)
+    .select('*')
+    .maybeSingle();
+  if (error) return { draft: null, error: error.message };
+  return { draft: (data as LetterDraft | null) ?? null, error: null };
+}
+
 export async function fetchUserCredits(
   userId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -202,6 +252,54 @@ export async function fetchUserDrafts(
   });
 
   return { drafts: joined, missingTable: false, error: null };
+}
+
+// FCRA §611(a)(1)(A) gives bureaus 30 days from receipt. We start the
+// clock from mailed_at — close enough for a UI signal; phase 3.6 may
+// switch to delivered_at once we wire USPS tracking.
+export const FCRA_RESPONSE_DAYS = 30;
+
+// Predefined bureau choices for the mailed-to picker. "Other" is a
+// free-text fallback for collectors, creditors, attorneys, etc.
+export const BUREAU_CHOICES = ['Equifax', 'Experian', 'TransUnion'] as const;
+export type BureauChoice = (typeof BUREAU_CHOICES)[number] | 'Other';
+
+export type OverdueState =
+  | { kind: 'in_window'; expectedBy: string; daysLeft: number }
+  | { kind: 'overdue'; daysOver: number }
+  | { kind: 'severely_overdue'; daysOver: number };
+
+// Computes where a sent letter sits against the 30-day FCRA window.
+// expectedBy is mailed_at + 30 days, ISO.
+export function overdueState(mailedAtIso: string | null): OverdueState | null {
+  if (!mailedAtIso) return null;
+  const mailed = new Date(mailedAtIso).getTime();
+  if (Number.isNaN(mailed)) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const elapsedDays = Math.floor((Date.now() - mailed) / dayMs);
+  if (elapsedDays <= FCRA_RESPONSE_DAYS) {
+    return {
+      kind: 'in_window',
+      expectedBy: new Date(mailed + FCRA_RESPONSE_DAYS * dayMs).toISOString(),
+      daysLeft: FCRA_RESPONSE_DAYS - elapsedDays,
+    };
+  }
+  const daysOver = elapsedDays - FCRA_RESPONSE_DAYS;
+  if (elapsedDays >= 45) return { kind: 'severely_overdue', daysOver };
+  return { kind: 'overdue', daysOver };
+}
+
+// "Apr 12, 2026" — used in toolbar banners and the detail page sent
+// headline.
+export function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 // Human-friendly relative time, used by CTAs and the My Letters list.
