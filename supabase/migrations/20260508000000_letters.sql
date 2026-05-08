@@ -42,14 +42,17 @@ create trigger letters_set_updated_at
 before update on public.letters
 for each row execute function public.letters_set_updated_at();
 
--- RLS: read-only for all authenticated users. No INSERT/UPDATE/DELETE
--- policies — service role bypasses RLS, so the seed script writes fine
--- and end users cannot mutate the library.
+-- RLS: read-only. The library is shared template content (not user data),
+-- so we grant SELECT to anon + authenticated so server components can
+-- fetch without a session token. Route-level auth (the /dashboard prefix)
+-- already gates who reaches the page. No INSERT/UPDATE/DELETE policies —
+-- service role bypasses RLS so the seed script writes fine, and no end
+-- user can mutate the library.
 alter table public.letters enable row level security;
 
-drop policy if exists "letters readable by authenticated users" on public.letters;
-create policy "letters readable by authenticated users"
+drop policy if exists "letters readable by everyone" on public.letters;
+create policy "letters readable by everyone"
 on public.letters
 for select
-to authenticated
+to anon, authenticated
 using (true);
