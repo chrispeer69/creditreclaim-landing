@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { fetchLetterById, type Letter } from '@/lib/letters';
 import PrintButton from './PrintButton';
+import CustomizeCTA from './CustomizeCTA';
 
 // Always render at request time — id is user-driven and the library
 // rows live in Supabase, not in the build.
@@ -41,6 +42,12 @@ export default async function LetterDetailPage({
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <Link
+              href="/dashboard/my-letters"
+              className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+            >
+              My letters
+            </Link>
+            <Link
               href="/dashboard/letters"
               className="text-sm text-gray-600 hover:text-gray-800 font-medium"
             >
@@ -64,6 +71,8 @@ export default async function LetterDetailPage({
             <CategoryChip category={letter.category} />
           </div>
         </header>
+
+        <CustomizeCTA letterId={letter.id} letterNumber={letter.number} />
 
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10 print:hidden">
           <Block title="When to use" body={letter.when_to_use} tone="amber" />

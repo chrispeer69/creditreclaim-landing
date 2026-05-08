@@ -225,6 +225,12 @@ function DashboardNav({ email, tier }: { email: string; tier: string }) {
           >
             Letter library
           </Link>
+          <Link
+            href="/dashboard/my-letters"
+            className="text-sm text-gray-600 hover:text-gray-800 font-medium"
+          >
+            My letters
+          </Link>
         </div>
       </div>
     </nav>
