@@ -69,14 +69,45 @@ const rows = letters.map(l => ({
   template_body: l.template_body,
 }));
 
-// Upsert on `number` (UNIQUE) so re-running updates existing rows.
-const { error: upsertError } = await supabase
-  .from('letters')
-  .upsert(rows, { onConflict: 'number' });
+// Upsert on `number` (UNIQUE). Chunked + retried because Supabase / its
+// edge layer occasionally drops a TLS connection mid-write on larger
+// batches (seen as ECONNRESET).
+const BATCH = 10;
+const MAX_ATTEMPTS = 5;
 
-if (upsertError) {
-  console.error('Upsert failed:', upsertError.message);
-  process.exit(1);
+for (let i = 0; i < rows.length; i += BATCH) {
+  const chunk = rows.slice(i, i + BATCH);
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const { error: upsertError } = await supabase
+      .from('letters')
+      .upsert(chunk, { onConflict: 'number' });
+
+    if (!upsertError) break;
+
+    const transient =
+      /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(
+        (upsertError.message || '') + ' ' + (upsertError.details || ''),
+      );
+    if (transient && attempt < MAX_ATTEMPTS) {
+      const delayMs = 500 * attempt;
+      console.warn(
+        `  rows ${chunk[0].number}-${chunk.at(-1).number}: transient (${upsertError.message}); retry ${attempt}/${MAX_ATTEMPTS - 1} in ${delayMs}ms`,
+      );
+      await new Promise(r => setTimeout(r, delayMs));
+      continue;
+    }
+
+    console.error(
+      `Upsert failed on batch ${i / BATCH + 1} (rows ${chunk[0].number}-${chunk.at(-1).number}):`,
+    );
+    console.error(upsertError);
+    process.exit(1);
+  }
+  process.stdout.write(
+    `  upserted rows ${chunk[0].number}-${chunk.at(-1).number}\n`,
+  );
 }
 
 const { count, error: countError } = await supabase
