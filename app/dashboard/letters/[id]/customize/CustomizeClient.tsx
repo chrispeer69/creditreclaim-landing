@@ -70,9 +70,28 @@ export default function CustomizeClient(props: {
   const bodyRef = useRef(body);
   const savedBodyRef = useRef(savedBody);
   const userIdRef = useRef(userId);
+  // Cached JWT for the keepalive fetch on tab close — beforeunload can't
+  // await, so we keep the token current via onAuthStateChange and read
+  // it synchronously at exit. Without this, the PostgREST upsert hits
+  // RLS as the anon role and is rejected silently.
+  const accessTokenRef = useRef<string | null>(null);
   useEffect(() => { bodyRef.current = body; }, [body]);
   useEffect(() => { savedBodyRef.current = savedBody; }, [savedBody]);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!cancelled) accessTokenRef.current = data.session?.access_token ?? null;
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      accessTokenRef.current = session?.access_token ?? null;
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   // ── Boot: auth → user_credits → existing draft → editor seed ─────
   useEffect(() => {
@@ -180,13 +199,16 @@ export default function CustomizeClient(props: {
     }
   }, [saveNow]);
 
-  // ── Autosave on tab/window close (best-effort via sendBeacon) ────
+  // ── Autosave on tab/window close (best-effort keepalive fetch) ───
   useEffect(() => {
     if (!authChecked || missingTable) return;
     const onBeforeUnload = () => {
       if (bodyRef.current === savedBodyRef.current) return;
       const uid = userIdRef.current;
-      if (!uid) return;
+      const accessToken = accessTokenRef.current;
+      // No JWT = no insert under RLS (auth.uid() = user_id). Skip rather
+      // than fire a request that will be rejected silently.
+      if (!uid || !accessToken) return;
       const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/letter_drafts?on_conflict=user_id,letter_number`;
       const body = JSON.stringify({
         user_id: uid,
@@ -194,27 +216,27 @@ export default function CustomizeClient(props: {
         customized_body: bodyRef.current,
         status: 'draft',
       });
-      // sendBeacon doesn't support custom headers; fall back to keepalive
-      // fetch which does. Either path is best-effort; the regular
-      // interval/blur autosave is the primary defense.
+      // sendBeacon can't set custom headers, so we use keepalive fetch.
+      // Both apikey (project) and Authorization (user JWT) are required
+      // — PostgREST authenticates with the JWT, then RLS matches user_id.
       try {
-        const session = supabase.auth;
-        void session;
-        const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
         void fetch(url, {
           method: 'POST',
           mode: 'cors',
           credentials: 'omit',
           keepalive: true,
           headers: {
-            apikey: key,
+            apikey: anonKey,
+            Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             Prefer: 'resolution=merge-duplicates',
           },
           body,
         });
       } catch {
-        // best-effort; nothing else to do here
+        // best-effort; the 30s interval autosave + onBlur covers the
+        // common case, this only narrows the window for the last edit.
       }
     };
     window.addEventListener('beforeunload', onBeforeUnload);
