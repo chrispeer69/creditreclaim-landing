@@ -22,7 +22,7 @@ export default function Home() {
               The credit improvement platform built on education and coaching.
             </h1>
             <p className="text-xl text-gray-600 font-light mb-12 leading-relaxed">
-              Learn the strategies that actually work. Then execute with precision. Whether you manage disputes yourself or let us handle it, your credit gets fixed right.
+              Learn the strategies that actually work. Then execute with precision. Whether you manage your own disputes or let us handle the sending, you&apos;ll know exactly what you&apos;re doing and why.
             </p>
             <div className="flex gap-4">
               <Link href="/signup" className="px-8 py-3 bg-gray-700 text-white text-sm font-medium hover:bg-gray-600 transition">
