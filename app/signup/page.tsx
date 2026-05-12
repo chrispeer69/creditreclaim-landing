@@ -9,6 +9,7 @@ export default function SignupPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmationSent, setConfirmationSent] = useState(false);
   const router = useRouter();
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -21,26 +22,69 @@ export default function SignupPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
+      const body = await res.json();
       if (!res.ok) {
-        const { error: apiError } = await res.json();
-        throw new Error(apiError);
+        throw new Error(body.error || 'Signup failed');
       }
-      // If email confirmation is disabled, signup also returns a session;
-      // if enabled, session is null and the user must confirm before login.
-      const { session } = await res.json();
+      // Email confirmation off → server returns a session; we persist it
+      // and drop the user straight into the dashboard. Confirmation on →
+      // session is null and we show the "check your email" view instead
+      // of routing into a logged-out dashboard that would just bounce to
+      // /login.
+      const session = body.session;
       if (session?.access_token && session?.refresh_token) {
         await supabase.auth.setSession({
           access_token: session.access_token,
           refresh_token: session.refresh_token,
         });
+        router.push('/dashboard');
+        return;
       }
-      router.push('/tier-selection');
+      setConfirmationSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup failed');
     } finally {
       setLoading(false);
     }
   };
+
+  if (confirmationSent) {
+    return (
+      <div className="min-h-screen bg-white">
+        <nav className="border-b border-gray-200 bg-white">
+          <div className="max-w-7xl mx-auto px-8 py-5 flex justify-between items-center">
+            <Link href="/" className="text-2xl font-light tracking-tight text-gray-900">
+              Credit<span className="font-semibold">Reclaim</span>
+            </Link>
+            <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900 font-medium">Sign In</Link>
+          </div>
+        </nav>
+
+        <div className="flex items-center justify-center min-h-[calc(100vh-70px)]">
+          <div className="w-full max-w-md px-8 text-center">
+            <h1 className="text-4xl font-light text-gray-900 mb-4">Check your email</h1>
+            <p className="text-gray-600 font-light mb-2">
+              We sent a confirmation link to
+            </p>
+            <p className="text-gray-900 font-medium mb-8 break-all">{email}</p>
+            <p className="text-gray-600 font-light mb-10">
+              Click the link to activate your account, then sign in.
+            </p>
+            <Link
+              href="/login"
+              className="inline-block px-8 py-3 bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition"
+            >
+              Go to sign in
+            </Link>
+            <p className="text-xs text-gray-500 font-light mt-8">
+              Didn&apos;t get it? Check spam, then try again from{' '}
+              <Link href="/signup" className="underline">signup</Link>.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white">
